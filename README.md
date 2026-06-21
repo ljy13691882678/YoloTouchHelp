@@ -11,7 +11,7 @@ Android 端 AI 检测与悬浮控制项目，支持 YOLO 多模型、QNN HTP / C
 `YoloTouchHelp` 是一个基于 Android + YOLO + NDK 的本地推理项目，核心能力包括：
 
 - 本地目标检测，支持多种 YOLO TFLite 模型
-- 高通平台 QNN HTP 加速，并保留 CPU 推理切换
+- 高通平台/联发科平台 QNN HTP 加速，并保留 CPU 推理切换
 - 悬浮球、悬浮菜单、区域设置与检测框绘制
 - Root / Shizuku 双触摸注入链路
 - HTML 主界面、HTML 弹窗与统一风格设置页
