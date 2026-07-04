@@ -319,6 +319,19 @@ class FloatService : Service() {
         autoTriggerAdsEnabled = cfg.autoTriggerAdsEnabled
         autoTriggerAdsRange = cfg.autoTriggerAdsRange
         ki = cfg.ki; kd = cfg.kd
+        
+        // PID参数随机化（±5%范围），避免固定参数被行为分析检测
+        // 仅在首次加载时随机化一次，保持本次运行参数稳定
+        if (!::aimController.isInitialized) {
+            val random = java.util.Random()
+            val kpJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f  // ±5%
+            val kiJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
+            val kdJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
+            kp = (kp * kpJitter).coerceIn(0.2f, 0.5f)
+            ki = (ki * kiJitter).coerceIn(0.01f, 0.05f)
+            kd = (kd * kdJitter).coerceIn(0.05f, 0.12f)
+        }
+        
         aimMode = cfg.aimMode
         bezierDuration = cfg.bezierDuration
         bezierControlOffset = cfg.bezierControlOffset

@@ -41,6 +41,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <sys/prctl.h>
+#include <unistd.h>
 #include "touch_core.h"
 
 // Screen params (set via commands before OPEN_UINPUT)
@@ -209,6 +211,22 @@ static void handle_command(const char* cmd) {
 // =========================================================================
 
 int main() {
+    // 进程名伪装：随机选择一个系统进程名，避免被检测为root_daemon
+    static const char* fake_process_names[] = {
+        "system_suspend_d",
+        "kworker/u8:2",
+        "thermal-engine",
+        "msm_irqbalance",
+        "netd",
+        "perfd",
+        "lmkd",
+        "servicemanager"
+    };
+    static const int name_count = sizeof(fake_process_names) / sizeof(fake_process_names[0]);
+    srand(time(NULL) ^ getpid());
+    int name_idx = rand() % name_count;
+    prctl(PR_SET_NAME, fake_process_names[name_idx], 0, 0, 0);
+    
     signal(SIGPIPE, SIG_IGN);
     setvbuf(stdout, NULL, _IOLBF, 0);
 

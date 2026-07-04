@@ -311,13 +311,27 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         return false;
     }
 
-    char randomName[16]{};
-    genRandomString(randomName, sizeof(randomName));
-    strncpy(uiDev.name, randomName, UINPUT_MAX_NAME_SIZE);
-    uiDev.id.bustype = 0;
-    uiDev.id.vendor = rand() % 10 + 5;
-    uiDev.id.product = rand() % 10 + 5;
-    uiDev.id.version = rand() % 10 + 5;
+    // 从真实触控芯片列表中随机选择，替代原随机字符串（提升隐蔽性）
+    static const char* touch_chip_names[] = {
+        "goodix_ts", "ft5x06_ts", "atmel_mxt_ts", "synaptics_dsx",
+        "cyttsp5_i2c", "ilitek_ts", "novatek_ts", "focaltech_ts",
+        "himax_ts", "sitronix_ts"
+    };
+    static const unsigned short touch_vendor_ids[] = {
+        0x27C6, 0x38F7, 0x03EB, 0x06CB,
+        0x04B4, 0x222A, 0x0603, 0x38F7,
+        0x1241, 0x1016
+    };
+    static const int chip_count = sizeof(touch_chip_names) / sizeof(touch_chip_names[0]);
+    int chip_idx = rand() % chip_count;
+    strncpy(uiDev.name, touch_chip_names[chip_idx], UINPUT_MAX_NAME_SIZE - 1);
+    uiDev.name[UINPUT_MAX_NAME_SIZE - 1] = '\0';
+    
+    // 使用真实的触控芯片参数（I2C总线 + 真实厂商ID）
+    uiDev.id.bustype = BUS_I2C;
+    uiDev.id.vendor = touch_vendor_ids[chip_idx];
+    uiDev.id.product = 0x0001 + (rand() & 0x0F);
+    uiDev.id.version = 0x0100 + (rand() & 0x0FF);
 
     ioctl(g_outputFd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
     ioctl(g_outputFd, UI_SET_EVBIT, EV_ABS);
