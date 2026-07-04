@@ -41,6 +41,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <time.h>
 #include <sys/prctl.h>
 #include <unistd.h>
 #include "touch_core.h"
