@@ -21,6 +21,20 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        cmdline-tools-version: 11076708
+        
+    - name: Install Android SDK components
+      run: |
+        sdkmanager "platforms;android-36"
+        sdkmanager "build-tools;35.0.0"
+        sdkmanager "ndk;27.0.12077973"
+        sdkmanager "cmake;3.22.1"
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> $GITHUB_ENV
+        
     - name: Cache Gradle packages
       uses: actions/cache@v4
       with:
