@@ -68,8 +68,6 @@ class MainActivity : AppCompatActivity() {
         const val ACTION_STATE_CHANGE = "com.yolotouchhelp.aimbot.STATE_CHANGE"
         const val EXTRA_STATE = "state"
         const val EXTRA_MODEL_NAME = "model_name"
-        private const val GITHUB_URL = "https://github.com/DreamFekk/YoloTouchHelp"
-        private const val TELEGRAM_URL = "https://t.me/YoloTouchHelp"
     }
 
     private val stateListener: (Int, String) -> Unit = { state, modelName ->
@@ -409,7 +407,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showMainMenuDialog() {
-        val labels = arrayOf("导出配置", "导入配置", "导入模型", "更新日志", "GitHub", "高级设置")
+        val labels = arrayOf("导出配置", "导入配置", "导入模型", "更新日志", "高级设置")
         MaterialAlertDialogBuilder(this)
             .setTitle("更多操作")
             .setItems(labels) { _, which ->
@@ -418,8 +416,7 @@ class MainActivity : AppCompatActivity() {
                     1 -> importLauncher.launch(arrayOf("application/json"))
                     2 -> modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "*/*"))
                     3 -> showChangelogDialog()
-                    4 -> openGithub()
-                    5 -> openSettings()
+                    4 -> openSettings()
                 }
             }
             .show()
@@ -438,24 +435,6 @@ class MainActivity : AppCompatActivity() {
             cancelable = true,
             heightRatio = 0.72f,
             onDismiss = { modelPickerDialog = null }
-        )
-    }
-
-    private fun openGithub() {
-        openExternalUrl(
-            url = GITHUB_URL,
-            chooserTitle = "选择浏览器打开 GitHub",
-            notFoundMessage = "未找到可打开链接的应用",
-            failureMessage = "打开 GitHub 失败"
-        )
-    }
-
-    private fun openTelegram() {
-        openExternalUrl(
-            url = TELEGRAM_URL,
-            chooserTitle = "选择应用打开 Telegram",
-            notFoundMessage = "未找到可打开 Telegram 的应用",
-            failureMessage = "打开 Telegram 失败"
         )
     }
 
@@ -1126,16 +1105,6 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun checkUpdate() {
             runOnUiThread { checkForUpdates(showNoUpdateToast = true) }
-        }
-
-        @JavascriptInterface
-        fun openGithub() {
-            runOnUiThread { this@MainActivity.openGithub() }
-        }
-
-        @JavascriptInterface
-        fun openTelegram() {
-            runOnUiThread { this@MainActivity.openTelegram() }
         }
 
         @JavascriptInterface
