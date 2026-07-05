@@ -66,22 +66,18 @@ class FloatService : Service() {
     private var recordSurface: Surface? = null
     var recordEnabled = false
     var autoSaveDataset = false
-    private var datasetCounter = -1  // -1 = 未初始化，首次保存时扫描目录
+    private var datasetCounter = -1 // -1 = 未初始化，首次保存时扫描目录
     private val datasetDir: java.io.File by lazy {
         java.io.File(getExternalFilesDir(null), "dataset").apply { mkdirs() }
     }
-    private var captureW = 0; private var captureH = 0  // natural display size for ImageReader + coords
+
+    private var captureW = 0; private var captureH = 0 // natural display size for ImageReader + coords
     // 使用 Display.getRealSize() 获取完整屏幕尺寸（包括挖孔区域），
     // 避免 displayMetrics 可能受安全区影响
-    private val screenSize: Point get() {
-        val p = Point()
-        wm.defaultDisplay.getRealSize(p)
-        return p
-    }
+    private val screenSize: Point get() { val p = Point(); wm.defaultDisplay.getRealSize(p); return p }
     private val screenWidth get() = screenSize.x
     private val screenHeight get() = screenSize.y
     private val screenDensity get() = resources.displayMetrics.densityDpi
-
     private val executor = Executors.newSingleThreadExecutor()
     private val inferRunning = AtomicBoolean(false)
     val aimbotOn = AtomicBoolean(false)
@@ -100,16 +96,17 @@ class FloatService : Service() {
     var currentClasses: Map<Int, String> = emptyMap()
 
     // Class filtering for aimbot
-    private var aimClasses: MutableSet<Int> = mutableSetOf()  // empty = all
+    private var aimClasses: MutableSet<Int> = mutableSetOf() // empty = all
     private var priorityClass: Int = -1
-    private var classAimOffsets: Map<Int, Float> = emptyMap()  // per-class Y offset
-    private var boxAimRatio = 0.5f  // 0=top, 0.5=center, 1=bottom
-    private var classBoxAimRatios: Map<Int, Float> = emptyMap()  // per-class box aim ratio
-    private var classTriggerOffsets: Map<Int, Float> = emptyMap()  // per-class trigger Y offset
-    private var triggerClasses: MutableSet<Int> = mutableSetOf()  // empty = all
+    private var classAimOffsets: Map<Int, Float> = emptyMap() // per-class Y offset
+    private var boxAimRatio = 0.5f // 0=top, 0.5=center, 1=bottom
+    private var classBoxAimRatios: Map<Int, Float> = emptyMap() // per-class box aim ratio
+    private var classTriggerOffsets: Map<Int, Float> = emptyMap() // per-class trigger Y offset
+    private var triggerClasses: MutableSet<Int> = mutableSetOf() // empty = all
 
     // PID auto-aim state
-    private var aimOffsetYRatio = 0f; private var aimSwayAmplitude = 0; private var aimPredictionMultiplier = 0.7f; private var triggerOffsetYRatio = 0f
+    private var aimOffsetYRatio = 0f; private var aimSwayAmplitude = 0
+    private var aimPredictionMultiplier = 0.7f; private var triggerOffsetYRatio = 0f
     private var kp = 0.30f; private var ki = 0.02f; private var kd = 0.08f
     private var pidSamplePeriodMs = 8
     private var aimHoldEnabled = false
@@ -129,13 +126,13 @@ class FloatService : Service() {
     private var moveSmooth = 0.35f
     private var deadzoneHoldFrames = 3
     private var edgeReturnStrength = 0.25f
+
     // Bezier aim state
     private var aimMode = 0 // 0=PID, 1=Bezier
     private var bezierDuration = 30; private var bezierControlOffset = 0.3f; private var bezierRandomSpread = 0.1f
     private var convergeThresh = 10f
 
     // Hold-to-fire (按住激发) state — uses trigger slot, separate from aim slot
-
     // Touch display overlay
     private var touchDisplayEnabled = false
     private var touchDisplayView: TouchDisplayView? = null
@@ -160,17 +157,18 @@ class FloatService : Service() {
 
     private var triggerEnabled = false; private var triggerReactionSpeed = 100; private var triggerCooldown = 200
     private var triggerUpFluct = 3; private var triggerDownFluct = 3
-    private var triggerTouchDuration = 10; private var triggerTouchRange = 100
-    private var triggerShowArea = false
+    private var triggerTouchDuration = 10; private var triggerTouchRange = 100; private var triggerShowArea = false
     private var autoStopEnabled = false
     private var autoTriggerAdsEnabled = false
     private var autoTriggerAdsRange = 180f
     private var touchOrientationMode = TOUCH_ORIENTATION_AUTO
+
     private var triggerOverlay: TriggerOverlayView? = null
     private var triggerOverlayAdded = false
-    private var triggerAreaX = 0; private var triggerAreaY = 0; private var lastTriggerMs = 0L
-    private var triggerFired = false  // 扳机是否已射过第一发（第二发起用冷却时间）
-    private val hasDetects = AtomicBoolean(false)
+    private var triggerAreaX = 0; private var triggerAreaY = 0
+    private var lastTriggerMs = 0L
+    private var triggerFired = false // 扳机是否已射过第一发（第二发起用冷却时间）
+    val hasDetects = AtomicBoolean(false)
 
     // Controllers and Managers
     private lateinit var aimController: AimController
@@ -181,8 +179,7 @@ class FloatService : Service() {
 
     override fun onCreate() {
         super.onCreate(); wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        ConfigManager.init(this)
-        loadConfigToService()
+        ConfigManager.init(this); loadConfigToService()
         createNotificationChannel(); startForeground(1, buildNotification())
         initControllers()
     }
@@ -193,7 +190,6 @@ class FloatService : Service() {
             touchClient = { safeTouchClient },
             savedAreas = { savedAreas }
         )
-
         triggerController = TriggerController(
             context = this,
             wm = wm,
@@ -203,14 +199,12 @@ class FloatService : Service() {
             screenHeight = { screenHeight },
             dp = { dp(it) }
         )
-
         inferenceManager = InferenceManager(
             service = this,
             aimController = aimController,
             triggerController = triggerController,
             overlayCanvasView = { if (overlayAdded) overlayView else null }
         )
-
         overlayManager = OverlayManager(
             context = this,
             wm = wm,
@@ -218,7 +212,6 @@ class FloatService : Service() {
             screenHeight = { screenHeight },
             dp = { dp(it) }
         )
-
         // Load config to controllers
         loadConfigToControllers()
     }
@@ -283,8 +276,7 @@ class FloatService : Service() {
 
     private fun loadConfigToService() {
         val cfg = ConfigManager.getConfig()
-        kp = cfg.speed
-        currentSpeed = cfg.speed
+        kp = cfg.speed; currentSpeed = cfg.speed
         pidSamplePeriodMs = cfg.pidSamplePeriodMs
         currentConfidence = cfg.confidence
         triggerEnabled = cfg.triggerEnabled
@@ -321,19 +313,19 @@ class FloatService : Service() {
         autoTriggerAdsEnabled = cfg.autoTriggerAdsEnabled
         autoTriggerAdsRange = cfg.autoTriggerAdsRange
         ki = cfg.ki; kd = cfg.kd
-        
+
         // PID参数随机化（±5%范围），避免固定参数被行为分析检测
         // 仅在首次加载时随机化一次，保持本次运行参数稳定
         if (!::aimController.isInitialized) {
             val random = java.util.Random()
-            val kpJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f  // ±5%
+            val kpJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f // ±5%
             val kiJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
             val kdJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
             kp = (kp * kpJitter).coerceIn(0.2f, 0.5f)
             ki = (ki * kiJitter).coerceIn(0.01f, 0.05f)
             kd = (kd * kdJitter).coerceIn(0.05f, 0.12f)
         }
-        
+
         aimMode = cfg.aimMode
         bezierDuration = cfg.bezierDuration
         bezierControlOffset = cfg.bezierControlOffset
@@ -353,19 +345,20 @@ class FloatService : Service() {
         savedAreas.addAll(cfg.areas)
         // 确保有5个区域（兼容旧配置）
         while (savedAreas.size < 5) {
-            savedAreas.add(AreaConfig(name = when (savedAreas.size) {
-                0 -> "开火区"
-                1 -> "触发区"
-                2 -> "瞄准区"
-                3 -> "摇杆范围"
-                else -> "开镜区"
-            }, color = when (savedAreas.size) {
-                1 -> android.graphics.Color.parseColor("#FF1976D2")
-                3 -> android.graphics.Color.parseColor("#FF4CAF50")
-                4 -> android.graphics.Color.parseColor("#FFFF9800")
-                else -> android.graphics.Color.WHITE
-            }))
+            savedAreas.add(AreaConfig(
+                name = when (savedAreas.size) {
+                    0 -> "开火区"; 1 -> "触发区"; 2 -> "瞄准区"; 3 -> "摇杆范围"
+                    else -> "开镜区"
+                },
+                color = when (savedAreas.size) {
+                    1 -> android.graphics.Color.parseColor("#FF1976D2")
+                    3 -> android.graphics.Color.parseColor("#FF4CAF50")
+                    4 -> android.graphics.Color.parseColor("#FFFF9800")
+                    else -> android.graphics.Color.WHITE
+                }
+            ))
         }
+
         JniCallBack.setConfidence(cfg.confidence)
         val cfgIdx = cfg.modelIndex
         if (cfgIdx !in 0 until ProjectionHolder.modelList.size) {
@@ -389,8 +382,7 @@ class FloatService : Service() {
             if (idx != lastModelIndex) {
                 val entry = ProjectionHolder.modelList.getOrNull(idx)
                 if (entry != null) {
-                    lastModelIndex = idx
-                    loadModel(entry.filename)
+                    lastModelIndex = idx; loadModel(entry.filename)
                     if (guiAdded) { guiPanel.modelIndex = idx; guiPanel.buildUI() }
                     Log.d(TAG, "同步模型切换: index=$idx, ${entry.displayName}")
                 }
@@ -399,8 +391,7 @@ class FloatService : Service() {
         }
         if (intent?.action == "STOP") {
             if (mediaRecorder != null) toggleRecording(false)
-            inferRunning.set(false)
-            executor.shutdown()
+            inferRunning.set(false); executor.shutdown()
             cleanupViews()
             touchClient?.stopGeteventListener()
             touchClient?.destroyRemote()
@@ -410,6 +401,7 @@ class FloatService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+
         val code = ProjectionHolder.resultCode; val data = ProjectionHolder.resultData
         if (data != null) {
             try {
@@ -418,6 +410,7 @@ class FloatService : Service() {
             } catch (e: Exception) { Log.e(TAG, "projection创建失败: ${e.message}") }
         }
         setupBall(); setupOverlay(); initTouchInjector()
+
         lastModelIndex = ProjectionHolder.selectedModelIndex
         // Load classes map for current model
         val entry = ProjectionHolder.modelList.getOrNull(ProjectionHolder.selectedModelIndex)
@@ -425,6 +418,7 @@ class FloatService : Service() {
         if (aimClasses.isEmpty() && currentClasses.isNotEmpty()) aimClasses = currentClasses.keys.toMutableSet()
         if (triggerClasses.isEmpty() && currentClasses.isNotEmpty()) triggerClasses = currentClasses.keys.toMutableSet()
         Log.d(TAG, "启动模型类别: $currentClasses, aimClasses=$aimClasses, triggerClasses=$triggerClasses")
+
         ProjectionHolder.updateState(1, JniCallBack.getBackend())
         return START_NOT_STICKY
     }
@@ -446,7 +440,9 @@ class FloatService : Service() {
         val size = dp(35)
         ballView = FloatBallView(this)
         ProjectionHolder.floatBallView = ballView
-        ballParams = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).apply { gravity = Gravity.TOP or Gravity.START; x = 50; y = 200 }
+        ballParams = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).apply {
+            gravity = Gravity.TOP or Gravity.START; x = 50; y = 200
+        }
         ballView.onMoveCallback = { dx, dy -> ballParams?.let { it.x += dx; it.y += dy; wm.updateViewLayout(ballView, it) } }
         ballView.onClickCallback = { toggleGui() }; wm.addView(ballView, ballParams); ballAdded = true
     }
@@ -461,7 +457,13 @@ class FloatService : Service() {
         overlayView.showCenterDot = cfg.showCenterDot
         overlayView.showLockRay = cfg.showLockRay
         overlayView.rangeRadius = cfg.range.coerceIn(50, 800)
-        overlayParams = makeParams(MATCH_PARENT, MATCH_PARENT, WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        // 修复：初始化enabledClassIds，确保各部位显示功能默认生效
+        overlayView.enabledClassIds = cfg.showDetectionClassIds.ifEmpty { null }
+        overlayParams = makeParams(MATCH_PARENT, MATCH_PARENT,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         wm.addView(overlayView, overlayParams); overlayAdded = true
     }
 
@@ -472,36 +474,22 @@ class FloatService : Service() {
                     touchClient?.setResolution(screenWidth, screenHeight, deviceAbsMaxX, deviceAbsMaxY)
                     applyTouchOrientationConfig()
                     touchClient?.setInputMethod(ProjectionHolder.selectedTouchMethod)
-                    updateTriggerZone()
-                    updateAdsZone()
-                    updateFireZone()
-                    updateJoystickZone()
+                    updateTriggerZone(); updateAdsZone(); updateFireZone(); updateJoystickZone()
                     Log.d(TAG, "TouchInjector connected, resolution=${deviceAbsMaxX}x${deviceAbsMaxY}, calling init...")
                     try {
                         val initOk = touchClient?.initRemote() ?: false
                         Log.d(TAG, "RemoteInjector init: $initOk")
                         touchClient?.startGeteventListener()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "initRemote error: ${e.message}")
-                    }
+                    } catch (e: Exception) { Log.e(TAG, "initRemote error: ${e.message}") }
                 }
-                override fun onDisconnected() {
-                    touchClient = null
-                    Log.w(TAG, "TouchInjector disconnected")
-                }
-                override fun onError(msg: String) {
-                    Log.e(TAG, "TouchInjector error: $msg")
-                }
+                override fun onDisconnected() { touchClient = null; Log.w(TAG, "TouchInjector disconnected") }
+                override fun onError(msg: String) { Log.e(TAG, "TouchInjector error: $msg") }
             }
-
             // Try root first
             try {
                 val rootClient = RootInjectorClient(this@FloatService)
                 rootClient.connect(object : InjectorCallback {
-                    override fun onConnected() {
-                        touchClient = rootClient
-                        commonCallback.onConnected()
-                    }
+                    override fun onConnected() { touchClient = rootClient; commonCallback.onConnected() }
                     override fun onDisconnected() { commonCallback.onDisconnected() }
                     override fun onError(msg: String) {
                         Log.d(TAG, "Root not available ($msg), trying Shizuku...")
@@ -509,24 +497,14 @@ class FloatService : Service() {
                         try {
                             val shizukuClient = ShizukuInjectorClient(this@FloatService)
                             shizukuClient.connect(object : InjectorCallback {
-                                override fun onConnected() {
-                                    touchClient = shizukuClient
-                                    commonCallback.onConnected()
-                                }
+                                override fun onConnected() { touchClient = shizukuClient; commonCallback.onConnected() }
                                 override fun onDisconnected() { commonCallback.onDisconnected() }
-                                override fun onError(msg2: String) {
-                                    Log.e(TAG, "Shizuku also failed: $msg2")
-                                    commonCallback.onError("Both root and Shizuku failed")
-                                }
+                                override fun onError(msg2: String) { Log.e(TAG, "Shizuku also failed: $msg2"); commonCallback.onError("Both root and Shizuku failed") }
                             })
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Shizuku init failed: ${e.message}")
-                        }
+                        } catch (e: Exception) { Log.e(TAG, "Shizuku init failed: ${e.message}") }
                     }
                 })
-            } catch (e: Exception) {
-                Log.e(TAG, "Root init failed: ${e.message}")
-            }
+            } catch (e: Exception) { Log.e(TAG, "Root init failed: ${e.message}") }
         }
     }
 
@@ -558,17 +536,12 @@ class FloatService : Service() {
             } catch (e: Exception) {
                 Log.e(TAG, "Recording failed", e)
                 try { mediaRecorder?.release() } catch (_: Exception) {}
-                mediaRecorder = null
-                recordSurface = null
+                mediaRecorder = null; recordSurface = null
             }
         } else {
             recordEnabled = false
-            try {
-                mediaRecorder?.stop()
-                mediaRecorder?.release()
-            } catch (e: Exception) { Log.e(TAG, "Stop failed", e) }
-            mediaRecorder = null
-            recordSurface = null
+            try { mediaRecorder?.stop(); mediaRecorder?.release() } catch (e: Exception) { Log.e(TAG, "Stop failed", e) }
+            mediaRecorder = null; recordSurface = null
             // 如果模型没在运行，停止推理循环
             if (!modelRunning) { inferRunning.set(false); broadcastState(1) }
             Log.d(TAG, "Recording stopped")
@@ -577,19 +550,14 @@ class FloatService : Service() {
 
     private fun saveDatasetFrame(hwBuf: android.hardware.HardwareBuffer, result: FloatArray, count: Int) {
         try {
-            // 首次保存时扫描目录，找到最大编号避免覆盖
             if (datasetCounter < 0) {
                 datasetCounter = datasetDir.listFiles { f -> f.name.endsWith(".jpg") }
-                    ?.mapNotNull { f -> f.nameWithoutExtension.toIntOrNull() }
-                    ?.maxOrNull()?.let { it + 1 } ?: 0
+                    ?.mapNotNull { f -> f.nameWithoutExtension.toIntOrNull() }?.maxOrNull()?.let { it + 1 } ?: 0
             }
             val bmp = Bitmap.wrapHardwareBuffer(hwBuf, null) ?: return
-            val idx = datasetCounter++
-            val name = "%06d".format(idx)
+            val idx = datasetCounter++; val name = "%06d".format(idx)
             val imgFile = java.io.File(datasetDir, "$name.jpg")
-            java.io.FileOutputStream(imgFile).use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }
-            bmp.recycle()
-            // 生成 YOLO 标注文件
+            java.io.FileOutputStream(imgFile).use { bmp.compress(Bitmap.CompressFormat.JPEG, 95, it) }; bmp.recycle()
             val txtFile = java.io.File(datasetDir, "$name.txt")
             java.io.BufferedWriter(java.io.FileWriter(txtFile)).use { w ->
                 for (i in 0 until count) {
@@ -601,9 +569,7 @@ class FloatService : Service() {
                     w.write("$classId $cx $cy $bw $bh\n")
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Dataset save failed", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "Dataset save failed", e) }
     }
 
     private fun setupTriggerOverlay() {
@@ -625,11 +591,7 @@ class FloatService : Service() {
     private fun updateTriggerOverlayVisibility() {
         val ov = triggerOverlay ?: return
         val p = ov.layoutParams as? WindowManager.LayoutParams ?: return
-        if (triggerShowArea) {
-            ov.alpha = 1f
-        } else {
-            ov.alpha = 0f
-        }
+        if (triggerShowArea) { ov.alpha = 1f } else { ov.alpha = 0f }
         p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         try { wm.updateViewLayout(ov, p) } catch (_: Exception) {}
     }
@@ -647,8 +609,7 @@ class FloatService : Service() {
         touchDisplayView = TouchDisplayView(this)
         ProjectionHolder.touchDisplayView = touchDisplayView
         val p = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
-        p.gravity = Gravity.TOP or Gravity.START
-        p.x = screenWidth / 2 - size / 2; p.y = screenHeight / 2 - size / 2
+        p.gravity = Gravity.TOP or Gravity.START; p.x = screenWidth / 2 - size / 2; p.y = screenHeight / 2 - size / 2
         touchDisplayView!!.dotRadius = dp(guiPanel.aimTouchSize).toFloat()
         wm.addView(touchDisplayView, p); touchDisplayAdded = true
         touchDisplayView!!.alpha = 0f
@@ -669,7 +630,6 @@ class FloatService : Service() {
                     modelFile.parentFile?.mkdirs()
                     assets.open(filename).use { i -> java.io.FileOutputStream(modelFile).use { o -> i.copyTo(o) } }
                 }
-                // For NCNN models, also copy the .bin file
                 if (filename.endsWith(".param")) {
                     val binFilename = filename.replace(".param", ".bin")
                     val binFile = java.io.File(applicationContext.filesDir, binFilename)
@@ -683,7 +643,6 @@ class FloatService : Service() {
             Log.d(TAG, "loadModel: useCpuInference=$useCpu, threads=${cfg.cpuThreadCount}")
             JniCallBack.setForceCpu(useCpu)
             JniCallBack.setCpuThreads(cfg.cpuThreadCount)
-            // Set input size for NCNN models (TFLite reads from model automatically)
             if (entry != null) {
                 JniCallBack.setInputSize(entry.inputSize, entry.inputSize)
             }
@@ -691,9 +650,7 @@ class FloatService : Service() {
                 val backend = JniCallBack.getBackend()
                 Log.d(TAG, "模型切换成功: $filename, 后端=$backend")
                 ProjectionHolder.currentModelName = backend
-                // Load classes map from ProjectionHolder
                 currentClasses = entry?.classes ?: emptyMap()
-                // 模型切换时更新类别选择：保留仍存在的类别，新增的自动选中
                 if (currentClasses.isNotEmpty()) {
                     val validIds = currentClasses.keys
                     aimClasses = aimClasses.filter { it in validIds }.toMutableSet()
@@ -702,26 +659,29 @@ class FloatService : Service() {
                     if (triggerClasses.isEmpty()) triggerClasses = validIds.toMutableSet()
                 }
                 Log.d(TAG, "模型类别: $currentClasses, aimClasses=$aimClasses, triggerClasses=$triggerClasses")
-                // Update GUI class list
-                if (guiAdded) { guiPanel.classMap = currentClasses; guiPanel.aimClasses = aimClasses.toMutableSet(); guiPanel.triggerClasses = triggerClasses.toMutableSet(); guiPanel.showDetectionClassIds = currentClasses.keys; showDetectionClassIds = currentClasses.keys.toMutableSet(); guiPanel.buildUI() }
+                if (guiAdded) {
+                    guiPanel.classMap = currentClasses
+                    guiPanel.aimClasses = aimClasses.toMutableSet()
+                    guiPanel.triggerClasses = triggerClasses.toMutableSet()
+                    guiPanel.showDetectionClassIds = currentClasses.keys
+                    showDetectionClassIds = currentClasses.keys.toMutableSet()
+                    guiPanel.buildUI()
+                }
                 broadcastState(ProjectionHolder.currentState)
             } else { Log.e(TAG, "模型切换失败: $filename") }
         } catch (e: Exception) { Log.e(TAG, "模型切换异常: ${e.message}") }
         if (wasRunning) startInferLoop()
     }
 
-    private fun toggleGui() { if (guiVisible) hideGui() else showGui() }
+    private fun toggleGui() {
+        if (guiVisible) hideGui() else showGui()
+    }
 
     private fun showGui() {
         if (guiAdded) {
-            // 复用已有面板，只更新状态并刷新UI
-            guiPanel.aimbotEnabled = aimbotOn.get()
-            guiPanel.modelRunning = modelRunning
-            guiPanel.recordEnabled = recordEnabled
-            guiPanel.autoSaveDataset = autoSaveDataset
-            guiPanel.speed = kp
-            guiPanel.ki = ki
-            guiPanel.kd = kd
+            guiPanel.aimbotEnabled = aimbotOn.get(); guiPanel.modelRunning = modelRunning
+            guiPanel.recordEnabled = recordEnabled; guiPanel.autoSaveDataset = autoSaveDataset
+            guiPanel.speed = kp; guiPanel.ki = ki; guiPanel.kd = kd
             guiPanel.modelNames = ProjectionHolder.modelList.map { it.displayName }
             guiPanel.modelIndex = ProjectionHolder.selectedModelIndex
             guiPanel.classMap = currentClasses
@@ -735,79 +695,49 @@ class FloatService : Service() {
             guiPanel.kalmanPredictEnabled = kalmanPredictEnabled
             guiPanel.aimPredictionMultiplier = aimPredictionMultiplier
             guiPanel.pidSamplePeriodMs = pidSamplePeriodMs
-            guiPanel.aimMode = aimMode
-            guiPanel.bezierDuration = bezierDuration
-            guiPanel.bezierControlOffset = bezierControlOffset
-            guiPanel.bezierRandomSpread = bezierRandomSpread
+            guiPanel.aimMode = aimMode; guiPanel.bezierDuration = bezierDuration
+            guiPanel.bezierControlOffset = bezierControlOffset; guiPanel.bezierRandomSpread = bezierRandomSpread
             guiPanel.convergeThresh = convergeThresh.toInt()
-            guiPanel.targetLostTolerance = targetLostTolerance
-            guiPanel.showLockRay = showLockRay
-            guiPanel.lockBoxThreshold = lockBoxThreshold
-            guiPanel.lockCenterWeight = lockCenterWeight
-            guiPanel.moveSmooth = moveSmooth
-            guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
-            guiPanel.edgeReturnStrength = edgeReturnStrength
-            guiPanel.touchOrientationMode = touchOrientationMode
+            guiPanel.targetLostTolerance = targetLostTolerance; guiPanel.showLockRay = showLockRay
+            guiPanel.lockBoxThreshold = lockBoxThreshold; guiPanel.lockCenterWeight = lockCenterWeight
+            guiPanel.moveSmooth = moveSmooth; guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
+            guiPanel.edgeReturnStrength = edgeReturnStrength; guiPanel.touchOrientationMode = touchOrientationMode
             guiPanel.showDetectionClassIds = showDetectionClassIds.toSet()
             guiPanel.buildUI()
             guiPanel.visibility = View.VISIBLE; guiPanel.alpha = 0f; guiPanel.scaleX = 0.85f; guiPanel.scaleY = 0.85f
             guiPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start(); guiVisible = true; return
         }
+
         guiPanel = GuiPanelView(this)
         ProjectionHolder.guiPanelView = guiPanel
         val cfg = ConfigManager.getConfig()
-        guiPanel.aimbotEnabled = aimbotOn.get()
-        guiPanel.speed = cfg.speed
-        guiPanel.range = overlayView.rangeRadius.coerceIn(50, 800)
-        guiPanel.confidence = cfg.confidence
-        guiPanel.triggerEnabled = cfg.triggerEnabled
-        guiPanel.triggerReactionSpeed = cfg.triggerReactionSpeed
-        guiPanel.triggerCooldown = cfg.triggerCooldown
-        guiPanel.triggerUpFluctuation = cfg.triggerUpFluctuation
-        guiPanel.triggerDownFluctuation = cfg.triggerDownFluctuation
-        guiPanel.triggerTouchDuration = cfg.triggerTouchDuration
-        guiPanel.triggerTouchRange = cfg.triggerTouchRange
-        guiPanel.triggerShowArea = cfg.triggerShowArea
-        guiPanel.autoStopEnabled = cfg.autoStopEnabled
-        guiPanel.aimHoldEnabled = cfg.aimHoldEnabled
-        guiPanel.aimOffsetYRatio = cfg.aimOffsetYRatio
-        guiPanel.aimSwayAmplitude = cfg.aimSwayAmplitude
-        guiPanel.aimPredictionMultiplier = cfg.aimPredictionMultiplier
-        guiPanel.pidSamplePeriodMs = cfg.pidSamplePeriodMs
-        guiPanel.triggerOffsetYRatio = cfg.triggerOffsetYRatio
-        guiPanel.ki = cfg.ki; guiPanel.kd = cfg.kd
-        guiPanel.aimMode = cfg.aimMode
-        guiPanel.bezierDuration = cfg.bezierDuration
-        guiPanel.bezierControlOffset = cfg.bezierControlOffset
-        guiPanel.bezierRandomSpread = cfg.bezierRandomSpread
+        guiPanel.aimbotEnabled = aimbotOn.get(); guiPanel.speed = cfg.speed
+        guiPanel.range = overlayView.rangeRadius.coerceIn(50, 800); guiPanel.confidence = cfg.confidence
+        guiPanel.triggerEnabled = cfg.triggerEnabled; guiPanel.triggerReactionSpeed = cfg.triggerReactionSpeed
+        guiPanel.triggerCooldown = cfg.triggerCooldown; guiPanel.triggerUpFluctuation = cfg.triggerUpFluctuation
+        guiPanel.triggerDownFluctuation = cfg.triggerDownFluctuation; guiPanel.triggerTouchDuration = cfg.triggerTouchDuration
+        guiPanel.triggerTouchRange = cfg.triggerTouchRange; guiPanel.triggerShowArea = cfg.triggerShowArea
+        guiPanel.autoStopEnabled = cfg.autoStopEnabled; guiPanel.aimHoldEnabled = cfg.aimHoldEnabled
+        guiPanel.aimOffsetYRatio = cfg.aimOffsetYRatio; guiPanel.aimSwayAmplitude = cfg.aimSwayAmplitude
+        guiPanel.aimPredictionMultiplier = cfg.aimPredictionMultiplier; guiPanel.pidSamplePeriodMs = cfg.pidSamplePeriodMs
+        guiPanel.triggerOffsetYRatio = cfg.triggerOffsetYRatio; guiPanel.ki = cfg.ki; guiPanel.kd = cfg.kd
+        guiPanel.aimMode = cfg.aimMode; guiPanel.bezierDuration = cfg.bezierDuration
+        guiPanel.bezierControlOffset = cfg.bezierControlOffset; guiPanel.bezierRandomSpread = cfg.bezierRandomSpread
         guiPanel.convergeThresh = cfg.convergeThresh
-        guiPanel.aimTouchDisplay = cfg.aimTouchDisplay
-        guiPanel.aimTouchSize = 20
-        guiPanel.modelRunning = modelRunning
-        guiPanel.recordEnabled = recordEnabled
-        guiPanel.autoSaveDataset = autoSaveDataset
-        guiPanel.showCaptureRange = cfg.showCaptureRange
-        guiPanel.showDetectionBox = cfg.showDetectionBox
-        guiPanel.showCenterDot = cfg.showCenterDot
-        guiPanel.showLockRay = cfg.showLockRay
-        guiPanel.recoilEnabled = cfg.recoilEnabled
-        guiPanel.recoilStrength = cfg.recoilStrength
-        guiPanel.kalmanPredictEnabled = cfg.kalmanPredictEnabled
-        guiPanel.kalmanMaxMissed = cfg.kalmanMaxMissed
-        guiPanel.kalmanProcessNoise = cfg.kalmanProcessNoise
-        guiPanel.kalmanMeasureNoise = cfg.kalmanMeasureNoise
-        guiPanel.kalmanBoxSmooth = cfg.kalmanBoxSmooth
-        guiPanel.kalmanMatchIouThreshold = cfg.kalmanMatchIouThreshold
-        guiPanel.targetLostTolerance = cfg.targetLostTolerance
-        guiPanel.showLockRay = cfg.showLockRay
+        guiPanel.aimTouchDisplay = cfg.aimTouchDisplay; guiPanel.aimTouchSize = 20
+        guiPanel.modelRunning = modelRunning; guiPanel.recordEnabled = recordEnabled; guiPanel.autoSaveDataset = autoSaveDataset
+        guiPanel.showCaptureRange = cfg.showCaptureRange; guiPanel.showDetectionBox = cfg.showDetectionBox
+        guiPanel.showCenterDot = cfg.showCenterDot; guiPanel.showLockRay = cfg.showLockRay
+        guiPanel.recoilEnabled = cfg.recoilEnabled; guiPanel.recoilStrength = cfg.recoilStrength
+        guiPanel.kalmanPredictEnabled = cfg.kalmanPredictEnabled; guiPanel.kalmanMaxMissed = cfg.kalmanMaxMissed
+        guiPanel.kalmanProcessNoise = cfg.kalmanProcessNoise; guiPanel.kalmanMeasureNoise = cfg.kalmanMeasureNoise
+        guiPanel.kalmanBoxSmooth = cfg.kalmanBoxSmooth; guiPanel.kalmanMatchIouThreshold = cfg.kalmanMatchIouThreshold
+        guiPanel.targetLostTolerance = cfg.targetLostTolerance; guiPanel.showLockRay = cfg.showLockRay
         guiPanel.showDetectionClassIds = cfg.showDetectionClassIds
-        guiPanel.lockBoxThreshold = cfg.lockBoxThreshold
-        guiPanel.lockCenterWeight = cfg.lockCenterWeight
-        guiPanel.moveSmooth = cfg.moveSmooth
-        guiPanel.deadzoneHoldFrames = cfg.deadzoneHoldFrames
+        guiPanel.lockBoxThreshold = cfg.lockBoxThreshold; guiPanel.lockCenterWeight = cfg.lockCenterWeight
+        guiPanel.moveSmooth = cfg.moveSmooth; guiPanel.deadzoneHoldFrames = cfg.deadzoneHoldFrames
         guiPanel.edgeReturnStrength = cfg.edgeReturnStrength
-        guiPanel.autoTriggerAdsEnabled = cfg.autoTriggerAdsEnabled
-        guiPanel.autoTriggerAdsRange = cfg.autoTriggerAdsRange
+        guiPanel.autoTriggerAdsEnabled = cfg.autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = cfg.autoTriggerAdsRange
         guiPanel.activeTab = 0
         guiPanel.modelNames = ProjectionHolder.modelList.map { it.displayName }
         guiPanel.modelIndex = ProjectionHolder.selectedModelIndex
@@ -816,48 +746,37 @@ class FloatService : Service() {
             if (e != null) { ProjectionHolder.notifyModelIndexChanged(idx); lastModelIndex = idx; loadModel(e.filename) }
         }
         guiPanel.classMap = currentClasses
-        guiPanel.aimClasses = aimClasses.toMutableSet()
-        guiPanel.priorityClass = priorityClass
-        guiPanel.classAimOffsets = classAimOffsets.toMutableMap()
-        guiPanel.boxAimRatio = boxAimRatio
-        guiPanel.classBoxAimRatios = classBoxAimRatios.toMutableMap()
-        guiPanel.classTriggerOffsets = classTriggerOffsets.toMutableMap()
+        guiPanel.aimClasses = aimClasses.toMutableSet(); guiPanel.priorityClass = priorityClass
+        guiPanel.classAimOffsets = classAimOffsets.toMutableMap(); guiPanel.boxAimRatio = boxAimRatio
+        guiPanel.classBoxAimRatios = classBoxAimRatios.toMutableMap(); guiPanel.classTriggerOffsets = classTriggerOffsets.toMutableMap()
         guiPanel.triggerClasses = triggerClasses.toMutableSet()
-        guiPanel.recoilEnabled = recoilEnabled
-        guiPanel.recoilStrength = recoilStrength
-        guiPanel.kalmanPredictEnabled = kalmanPredictEnabled
-        guiPanel.kalmanMaxMissed = kalmanMaxMissed
-        guiPanel.kalmanProcessNoise = kalmanProcessNoise
-        guiPanel.kalmanMeasureNoise = kalmanMeasureNoise
-        guiPanel.kalmanBoxSmooth = kalmanBoxSmooth
-        guiPanel.kalmanMatchIouThreshold = kalmanMatchIouThreshold
-        guiPanel.aimPredictionMultiplier = aimPredictionMultiplier
-        guiPanel.pidSamplePeriodMs = pidSamplePeriodMs
+        guiPanel.recoilEnabled = recoilEnabled; guiPanel.recoilStrength = recoilStrength
+        guiPanel.kalmanPredictEnabled = kalmanPredictEnabled; guiPanel.kalmanMaxMissed = kalmanMaxMissed
+        guiPanel.kalmanProcessNoise = kalmanProcessNoise; guiPanel.kalmanMeasureNoise = kalmanMeasureNoise
+        guiPanel.kalmanBoxSmooth = kalmanBoxSmooth; guiPanel.kalmanMatchIouThreshold = kalmanMatchIouThreshold
+        guiPanel.aimPredictionMultiplier = aimPredictionMultiplier; guiPanel.pidSamplePeriodMs = pidSamplePeriodMs
         guiPanel.showLockRay = showLockRay
-        guiPanel.targetLostTolerance = targetLostTolerance
-        guiPanel.lockBoxThreshold = lockBoxThreshold
-        guiPanel.lockCenterWeight = lockCenterWeight
-        guiPanel.moveSmooth = moveSmooth
-        guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
-        guiPanel.edgeReturnStrength = edgeReturnStrength
-        guiPanel.aimMode = aimMode
-        guiPanel.bezierDuration = bezierDuration
-        guiPanel.bezierControlOffset = bezierControlOffset
-        guiPanel.bezierRandomSpread = bezierRandomSpread
+        guiPanel.targetLostTolerance = targetLostTolerance; guiPanel.lockBoxThreshold = lockBoxThreshold
+        guiPanel.lockCenterWeight = lockCenterWeight; guiPanel.moveSmooth = moveSmooth
+        guiPanel.deadzoneHoldFrames = deadzoneHoldFrames; guiPanel.edgeReturnStrength = edgeReturnStrength
+        guiPanel.aimMode = aimMode; guiPanel.bezierDuration = bezierDuration
+        guiPanel.bezierControlOffset = bezierControlOffset; guiPanel.bezierRandomSpread = bezierRandomSpread
         guiPanel.convergeThresh = convergeThresh.toInt()
-        guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled
-        guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
+        guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
         guiPanel.touchOrientationMode = touchOrientationMode
+
         guiPanel.buildUI()
         val initialWidth = ((280 * resources.displayMetrics.density).toInt()).coerceAtMost((screenWidth * 0.92f).toInt().coerceAtLeast(dp(240)))
         val initialHeight = ((screenHeight * 0.68f).toInt()).coerceIn(dp(240).coerceAtMost((screenHeight * 0.88f).toInt().coerceAtLeast(dp(240))), (screenHeight * 0.88f).toInt().coerceAtLeast(dp(240)))
-        guiParams = makeParams(initialWidth, initialHeight, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL).apply { gravity = Gravity.TOP or Gravity.START; x = 60; y = 200 }
+        guiParams = makeParams(initialWidth, initialHeight, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL).apply {
+            gravity = Gravity.TOP or Gravity.START; x = 60; y = 200
+        }
+
         guiPanel.onPanelDrag = { dx, dy -> moveGuiPanel(dx, dy) }
         guiPanel.onPanelResize = { dx, dy -> resizeGuiPanel(dx, dy) }
         guiPanel.onClose = { hideGui() }
         guiPanel.onEnabledChanged = { on ->
-            aimbotOn.set(on)
-            overlayView.aimbotEnabled = on
+            aimbotOn.set(on); overlayView.aimbotEnabled = on
             ConfigManager.updateConfig { aimbotEnabled = on }
             if (on) { aimController.aimingState.maxDragDist = (screenWidth.coerceAtMost(screenHeight) * 0.2f).coerceIn(100f, 600f) }
             else { clearAimSession("aimbot_disabled", clearVisualTargets = false) }
@@ -875,32 +794,14 @@ class FloatService : Service() {
         guiPanel.onTriggerTouchRange = { px -> triggerTouchRange = px; triggerController.triggerTouchRange = px; updateTriggerOverlaySize(); triggerController.updateTriggerOverlaySize(); ConfigManager.updateConfig { triggerTouchRange = px } }
         guiPanel.onTriggerShowArea = { show -> triggerShowArea = show; triggerController.triggerShowArea = show; if (show) setupTriggerOverlay(); updateTriggerOverlayVisibility(); triggerController.updateTriggerOverlayVisibility(); ConfigManager.updateConfig { triggerShowArea = show } }
         guiPanel.onAutoStopEnabledChanged = { autoStopEnabled = it; triggerController.autoStopEnabled = it; ConfigManager.updateConfig { autoStopEnabled = it } }
-        guiPanel.onAutoTriggerAdsEnabledChanged = {
-            autoTriggerAdsEnabled = it
-            triggerController.autoTriggerAdsEnabled = it
-            ConfigManager.updateConfig { autoTriggerAdsEnabled = it }
-        }
-        guiPanel.onAutoTriggerAdsRangeChanged = {
-            autoTriggerAdsRange = it
-            triggerController.autoTriggerAdsRange = it
-            ConfigManager.updateConfig { autoTriggerAdsRange = it }
-        }
+        guiPanel.onAutoTriggerAdsEnabledChanged = { autoTriggerAdsEnabled = it; triggerController.autoTriggerAdsEnabled = it; ConfigManager.updateConfig { autoTriggerAdsEnabled = it } }
+        guiPanel.onAutoTriggerAdsRangeChanged = { autoTriggerAdsRange = it; triggerController.autoTriggerAdsRange = it; ConfigManager.updateConfig { autoTriggerAdsRange = it } }
         guiPanel.onAimOffsetYRatioChanged = { aimOffsetYRatio = it; aimController.aimOffsetYRatio = it; ConfigManager.updateConfig { aimOffsetYRatio = it } }
         guiPanel.onAimSwayAmplitudeChanged = { aimSwayAmplitude = it; aimController.aimSwayAmplitude = it; ConfigManager.updateConfig { aimSwayAmplitude = it } }
-        guiPanel.onAimPredictionMultiplierChanged = {
-            aimPredictionMultiplier = it
-            aimController.aimPredictionMultiplier = it
-            ConfigManager.updateConfig { aimPredictionMultiplier = it }
-        }
+        guiPanel.onAimPredictionMultiplierChanged = { aimPredictionMultiplier = it; aimController.aimPredictionMultiplier = it; ConfigManager.updateConfig { aimPredictionMultiplier = it } }
         guiPanel.onRecoilEnabledChanged = { recoilEnabled = it; aimController.recoilEnabled = it; ConfigManager.updateConfig { recoilEnabled = it } }
         guiPanel.onRecoilStrengthChanged = { recoilStrength = it; aimController.recoilStrength = it; ConfigManager.updateConfig { recoilStrength = it } }
-        guiPanel.onShowLockRayChanged = {
-            showLockRay = it
-            aimController.showLockRay = it
-            overlayView.showLockRay = it
-            if (!it) overlayView.updateLockRay(null, null)
-            ConfigManager.updateConfig { showLockRay = it }
-        }
+        guiPanel.onShowLockRayChanged = { showLockRay = it; aimController.showLockRay = it; overlayView.showLockRay = it; if (!it) overlayView.updateLockRay(null, null); ConfigManager.updateConfig { showLockRay = it } }
         guiPanel.onShowDetectionClassIdsChanged = { ids ->
             showDetectionClassIds = ids.toMutableSet()
             overlayView.enabledClassIds = ids
@@ -913,44 +814,16 @@ class FloatService : Service() {
         guiPanel.onMoveSmoothChanged = { moveSmooth = it; aimController.moveSmooth = it; ConfigManager.updateConfig { moveSmooth = it } }
         guiPanel.onDeadzoneHoldFramesChanged = { deadzoneHoldFrames = it; aimController.deadzoneHoldFrames = it; ConfigManager.updateConfig { deadzoneHoldFrames = it } }
         guiPanel.onEdgeReturnStrengthChanged = { edgeReturnStrength = it; aimController.edgeReturnStrength = it; ConfigManager.updateConfig { edgeReturnStrength = it } }
-        guiPanel.onKalmanPredictEnabledChanged = { enabled ->
-            kalmanPredictEnabled = enabled
-            if (!enabled) kalmanTracker.reset()
-            ConfigManager.updateConfig { kalmanPredictEnabled = enabled }
-        }
-        guiPanel.onKalmanMaxMissedChanged = { value ->
-            kalmanMaxMissed = value
-            applyKalmanConfig()
-            ConfigManager.updateConfig { kalmanMaxMissed = value }
-        }
-        guiPanel.onKalmanProcessNoiseChanged = { value ->
-            kalmanProcessNoise = value
-            applyKalmanConfig()
-            ConfigManager.updateConfig { kalmanProcessNoise = value }
-        }
-        guiPanel.onKalmanMeasureNoiseChanged = { value ->
-            kalmanMeasureNoise = value
-            applyKalmanConfig()
-            ConfigManager.updateConfig { kalmanMeasureNoise = value }
-        }
-        guiPanel.onKalmanBoxSmoothChanged = { value ->
-            kalmanBoxSmooth = value
-            applyKalmanConfig()
-            ConfigManager.updateConfig { kalmanBoxSmooth = value }
-        }
-        guiPanel.onKalmanMatchIouThresholdChanged = { value ->
-            kalmanMatchIouThreshold = value
-            applyKalmanConfig()
-            ConfigManager.updateConfig { kalmanMatchIouThreshold = value }
-        }
+        guiPanel.onKalmanPredictEnabledChanged = { enabled -> kalmanPredictEnabled = enabled; if (!enabled) kalmanTracker.reset(); ConfigManager.updateConfig { kalmanPredictEnabled = enabled } }
+        guiPanel.onKalmanMaxMissedChanged = { value -> kalmanMaxMissed = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMaxMissed = value } }
+        guiPanel.onKalmanProcessNoiseChanged = { value -> kalmanProcessNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanProcessNoise = value } }
+        guiPanel.onKalmanMeasureNoiseChanged = { value -> kalmanMeasureNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMeasureNoise = value } }
+        guiPanel.onKalmanBoxSmoothChanged = { value -> kalmanBoxSmooth = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanBoxSmooth = value } }
+        guiPanel.onKalmanMatchIouThresholdChanged = { value -> kalmanMatchIouThreshold = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMatchIouThreshold = value } }
         guiPanel.onTriggerOffsetYRatioChanged = { triggerOffsetYRatio = it; triggerController.triggerOffsetYRatio = it; ConfigManager.updateConfig { triggerOffsetYRatio = it } }
         guiPanel.onKiChanged = { ki = it; guiPanel.ki = it; aimController.ki = it; ConfigManager.updateConfig { ki = it } }
         guiPanel.onKdChanged = { kd = it; guiPanel.kd = it; aimController.kd = it; ConfigManager.updateConfig { kd = it } }
-        guiPanel.onPidSamplePeriodMsChanged = {
-            pidSamplePeriodMs = it
-            aimController.pidSamplePeriodMs = it
-            ConfigManager.updateConfig { pidSamplePeriodMs = it }
-        }
+        guiPanel.onPidSamplePeriodMsChanged = { pidSamplePeriodMs = it; aimController.pidSamplePeriodMs = it; ConfigManager.updateConfig { pidSamplePeriodMs = it } }
         guiPanel.onAimModeChanged = { aimMode = it; aimController.aimMode = it; ConfigManager.updateConfig { aimMode = it } }
         guiPanel.onBezierDurationChanged = { bezierDuration = it; aimController.bezierDuration = it; ConfigManager.updateConfig { bezierDuration = it } }
         guiPanel.onBezierControlOffsetChanged = { bezierControlOffset = it; aimController.bezierControlOffset = it; ConfigManager.updateConfig { bezierControlOffset = it } }
@@ -958,8 +831,7 @@ class FloatService : Service() {
         guiPanel.onConvergeThreshChanged = { convergeThresh = it.toFloat(); aimController.convergeThresh = it.toFloat(); ConfigManager.updateConfig { convergeThresh = it } }
         guiPanel.onAimHoldEnabled = { aimHoldEnabled = it; aimController.aimHoldEnabled = it; ConfigManager.updateConfig { aimHoldEnabled = it } }
         guiPanel.onAimTouchDisplay = { show ->
-            touchDisplayEnabled = show
-            ConfigManager.updateConfig { aimTouchDisplay = show }
+            touchDisplayEnabled = show; ConfigManager.updateConfig { aimTouchDisplay = show }
             if (touchDisplayAdded) {
                 val lp = touchDisplayView?.layoutParams as? WindowManager.LayoutParams
                 if (lp != null) {
@@ -969,37 +841,13 @@ class FloatService : Service() {
                 }
             }
         }
-        guiPanel.onAimTouchSize = { px ->
-            ConfigManager.updateConfig { aimTouchSize = px }
-            val p = dp(px)
-            touchDisplayView?.dotRadius = p.toFloat()
-            if (touchDisplayAdded) {
-                val lp = touchDisplayView?.layoutParams as? WindowManager.LayoutParams
-                if (lp != null) { lp.width = p * 2; lp.height = p * 2; wm.updateViewLayout(touchDisplayView, lp) }
-            }
-        }
-        guiPanel.onShowCaptureRangeChanged = { on ->
-            overlayView.showCaptureRange = on
-            overlayView.postInvalidate()
-            ConfigManager.updateConfig { showCaptureRange = on }
-        }
-        guiPanel.onShowDetectionBoxChanged = { on ->
-            overlayView.showDetectionBox = on
-            overlayView.postInvalidate()
-            ConfigManager.updateConfig { showDetectionBox = on }
-        }
-        guiPanel.onShowCenterDotChanged = { on ->
-            overlayView.showCenterDot = on
-            overlayView.postInvalidate()
-            ConfigManager.updateConfig { showCenterDot = on }
-        }
+        guiPanel.onAimTouchSize = { px -> ConfigManager.updateConfig { aimTouchSize = px }; val p = dp(px); touchDisplayView?.dotRadius = p.toFloat(); if (touchDisplayAdded) { val lp = touchDisplayView?.layoutParams as? WindowManager.LayoutParams; if (lp != null) { lp.width = p * 2; lp.height = p * 2; wm.updateViewLayout(touchDisplayView, lp) } } }
+        guiPanel.onShowCaptureRangeChanged = { on -> overlayView.showCaptureRange = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCaptureRange = on } }
+        guiPanel.onShowDetectionBoxChanged = { on -> overlayView.showDetectionBox = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showDetectionBox = on } }
+        guiPanel.onShowCenterDotChanged = { on -> overlayView.showCenterDot = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCenterDot = on } }
         guiPanel.onRecordEnabledChanged = { on -> toggleRecording(on) }
         guiPanel.onAutoSaveDatasetChanged = { on -> autoSaveDataset = on }
-        guiPanel.onTouchOrientationModeChanged = { mode ->
-            touchOrientationMode = mode
-            applyTouchOrientationConfig()
-            ConfigManager.updateConfig { touchOrientationMode = mode }
-        }
+        guiPanel.onTouchOrientationModeChanged = { mode -> touchOrientationMode = mode; applyTouchOrientationConfig(); ConfigManager.updateConfig { touchOrientationMode = mode } }
         guiPanel.onAimClassesChanged = { classes -> aimClasses = classes.toMutableSet(); aimController.aimClasses = classes.toMutableSet(); ConfigManager.updateConfig { aimClasses = classes } }
         guiPanel.onPriorityClassChanged = { cls -> priorityClass = cls; aimController.priorityClass = cls; ConfigManager.updateConfig { priorityClass = cls } }
         guiPanel.onClassAimOffsetChanged = { id, value -> classAimOffsets = classAimOffsets.toMutableMap().apply { put(id, value) }; aimController.classAimOffsets = classAimOffsets; ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets } }
@@ -1011,37 +859,14 @@ class FloatService : Service() {
             modelRunning = running
             if (running && !inferRunning.get()) startInferLoop()
             else if (!running) {
-                // 如果录屏还在运行，不要停止推理循环
-                if (!recordEnabled) {
-                    inferRunning.set(false)
-                    broadcastState(1)
-                }
+                if (!recordEnabled) { inferRunning.set(false); broadcastState(1) }
             }
         }
-        guiPanel.onTestCircle = {
-            mainHandler.post {
-                Thread {
-                    val cx = screenWidth / 2; val cy = screenHeight / 2
-                    val radius = 200; val steps = 72
-                    val aspect = screenWidth.toFloat() / screenHeight.toFloat()
-                    touchClient?.swipe(cx, cy, cx, cy, 0)
-                    Thread.sleep(50)
-                    for (i in 1 until steps) {
-                        val angle = (i * 360.0 / steps) * Math.PI / 180.0
-                        val x = (cx + radius * aspect * Math.cos(angle)).toInt()
-                        val y = (cy + radius * Math.sin(angle)).toInt()
-                        touchClient?.moveTo(x, y)
-                        Thread.sleep(20)
-                    }
-                    touchClient?.lift()
-                }.start()
-            }
-        }
+        guiPanel.onTestCircle = { mainHandler.post { Thread { val cx = screenWidth / 2; val cy = screenHeight / 2; val radius = 200; val steps = 72; val aspect = screenWidth.toFloat() / screenHeight.toFloat(); touchClient?.swipe(cx, cy, cx, cy, 0); Thread.sleep(50); for (i in 1 until steps) { val angle = (i * 360.0 / steps) * Math.PI / 180.0; val x = (cx + radius * aspect * Math.cos(angle)).toInt(); val y = (cy + radius * Math.sin(angle)).toInt(); touchClient?.moveTo(x, y); Thread.sleep(20) }; touchClient?.lift() }.start() } }
         guiPanel.onAreaSettingsToggle = { showAreaSettings() }
 
         overlayView.rangeRadius = guiPanel.range; JniCallBack.setConfidence(guiPanel.confidence)
-        setupTriggerOverlay()
-        setupTouchDisplayView()
+        setupTriggerOverlay(); setupTouchDisplayView()
         wm.addView(guiPanel, guiParams); guiAdded = true; guiVisible = true
         guiPanel.alpha = 0f; guiPanel.scaleX = 0.85f; guiPanel.scaleY = 0.85f
         guiPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start()
@@ -1061,12 +886,10 @@ class FloatService : Service() {
 
     private fun resizeGuiPanel(dx: Int, dy: Int) {
         val params = guiParams ?: return
-        val minWidth = dp(240)
-        val minHeight = dp(320)
+        val minWidth = dp(240); val minHeight = dp(320)
         val maxWidth = (screenWidth * 0.92f).toInt().coerceAtLeast(dp(180))
         val maxHeight = (screenHeight * 0.88f).toInt().coerceAtLeast(dp(220))
-        val safeMinWidth = minWidth.coerceAtMost(maxWidth)
-        val safeMinHeight = minHeight.coerceAtMost(maxHeight)
+        val safeMinWidth = minWidth.coerceAtMost(maxWidth); val safeMinHeight = minHeight.coerceAtMost(maxHeight)
         params.width = (params.width + dx).coerceIn(safeMinWidth, maxWidth)
         params.height = (params.height + dy).coerceIn(safeMinHeight, maxHeight)
         params.x = params.x.coerceIn(0, (screenWidth - params.width).coerceAtLeast(0))
@@ -1083,113 +906,88 @@ class FloatService : Service() {
     private fun setupAreaSettingsView() {
         areaSettingsView = AreaSettingsView(this)
         ProjectionHolder.areaSettingsView = areaSettingsView
-        val params = makeParams(
-            MATCH_PARENT,
-            MATCH_PARENT,
+        val params = makeParams(MATCH_PARENT, MATCH_PARENT,
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        ).apply {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS).apply {
             gravity = Gravity.TOP or Gravity.START
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode =
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
         areaSettingsView?.apply {
             onConfirm = { areas ->
-                savedAreas.clear()
-                savedAreas.addAll(areas)
+                savedAreas.clear(); savedAreas.addAll(areas)
                 ConfigManager.updateConfig { this.areas = areas.toList() }
-                updateTriggerZone()
-                updateAdsZone()
-                updateFireZone()
-                updateJoystickZone()
-                removeAreaSettingsView()
-                if (!guiVisible) showGui()
+                updateTriggerZone(); updateAdsZone(); updateFireZone(); updateJoystickZone()
+                removeAreaSettingsView(); if (!guiVisible) showGui()
             }
-            onCancel = {
-                removeAreaSettingsView()
-                if (!guiVisible) showGui()
-            }
+            onCancel = { removeAreaSettingsView(); if (!guiVisible) showGui() }
         }
-        wm.addView(areaSettingsView!!, params)
-        areaSettingsAdded = true
+        wm.addView(areaSettingsView!!, params); areaSettingsAdded = true
         areaSettingsView!!.visibility = View.GONE
     }
 
-    private fun removeAreaSettingsView() {
-        try { if (areaSettingsAdded) { wm.removeView(areaSettingsView); areaSettingsAdded = false; ProjectionHolder.areaSettingsView = null } } catch (_: Exception) {}
-    }
-
     private fun showAreaSettings() {
-        if (areaSettingsAdded) removeAreaSettingsView()
-        setupAreaSettingsView()
-        if (savedAreas.isNotEmpty()) areaSettingsView?.setAreas(savedAreas.toList())
-        hideGui()
-        areaSettingsView?.open()
+        if (areaSettingsView == null) setupAreaSettingsView()
+        if (areaSettingsAdded) {
+            if (guiVisible) hideGui()
+            areaSettingsView?.apply {
+                visibility = View.VISIBLE; alpha = 0f; scaleX = 0.85f; scaleY = 0.85f
+                areas = this@FloatService.savedAreas.toMutableList(); buildUI()
+                animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start()
+            }
+        }
     }
 
-    private fun hideAreaSettings() {
-        removeAreaSettingsView()
-        if (!guiVisible) showGui()
+    private fun removeAreaSettingsView() {
+        if (areaSettingsAdded) {
+            areaSettingsView?.animate()?.alpha(0f)?.scaleX(0.85f)?.scaleY(0.85f)?.setDuration(150)
+                ?.withEndAction {
+                    areaSettingsView?.visibility = View.GONE
+                }?.start()
+        }
     }
 
-    // 推送触发区域到远程服务，用于物理手指检测
-    private fun updateTriggerZone() {
-        val zone = savedAreas.getOrNull(AREA_INDEX_TRIGGER) ?: return
-        touchClient?.setTriggerZone(zone.x, zone.y, zone.right, zone.bottom)
-        Log.d(TAG, "updateTriggerZone: (${zone.x},${zone.y})-(${zone.right},${zone.bottom})")
+    fun updateTriggerZone() {
+        val area = savedAreas.getOrNull(AREA_INDEX_TRIGGER) ?: return
+        touchClient?.setTriggerZone(area.x, area.y, area.x + area.width, area.y + area.height)
     }
 
-    private fun updateAdsZone() {
-        val zone = savedAreas.getOrNull(AREA_INDEX_ADS) ?: return
-        touchClient?.setAdsZone(zone.x, zone.y, zone.right, zone.bottom)
-        Log.d(TAG, "updateAdsZone: (${zone.x},${zone.y})-(${zone.right},${zone.bottom})")
+    fun updateAdsZone() {
+        val area = savedAreas.getOrNull(AREA_INDEX_ADS) ?: return
+        touchClient?.setAdsZone(area.x, area.y, area.x + area.width, area.y + area.height)
     }
 
-    private fun updateFireZone() {
-        val zone = savedAreas.getOrNull(AREA_INDEX_FIRE) ?: return
-        touchClient?.setFireZone(zone.x, zone.y, zone.right, zone.bottom)
-        Log.d(TAG, "updateFireZone: (${zone.x},${zone.y})-(${zone.right},${zone.bottom})")
+    fun updateFireZone() {
+        val area = savedAreas.getOrNull(AREA_INDEX_FIRE) ?: return
+        touchClient?.setFireZone(area.x, area.y, area.x + area.width, area.y + area.height)
     }
 
-    private fun updateJoystickZone() {
-        val zone = savedAreas.getOrNull(AREA_INDEX_JOYSTICK) ?: return
-        touchClient?.setJoystickZone(zone.x, zone.y, zone.right, zone.bottom)
-        Log.d(TAG, "updateJoystickZone: (${zone.x},${zone.y})-(${zone.right},${zone.bottom})")
-    }
+    fun updateJoystickZone() {}
 
-    private fun clearAimSession(
-        reason: String,
-        clearVisualTargets: Boolean = true,
-        clearLockRay: Boolean = true
-    ) {
+    private fun clearAimSession(reason: String, clearVisualTargets: Boolean = true, clearLockRay: Boolean = true) {
         aimController.lift()
         aimController.reset()
-        if (clearLockRay) {
-            mainHandler.post { overlayView.updateLockRay(null, null) }
-        }
-
+        if (clearLockRay) { mainHandler.post { overlayView.updateLockRay(null, null) } }
         if (clearVisualTargets) {
-            kalmanTracker.reset()
-            hasDetects.set(false)
-            lastDetections = emptyList()
+            hasDetects.set(false); lastDetections = emptyList()
             mainHandler.post { overlayView.updateDetections(emptyList()) }
         }
         Log.d(TAG, "clearAimSession: reason=$reason")
     }
 
     private fun setupImageReader() {
-        captureW = screenWidth; captureH = screenHeight
+        val mW = screenWidth; val mH = screenHeight
+        captureW = mW; captureH = mH
         Log.d(TAG, "setupImageReader: w=${captureW} h=${captureH}")
-
         imageReader = ImageReader.newInstance(captureW, captureH, PixelFormat.RGBA_8888, 2)
-        mediaProjection?.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() { Log.d("YoloTouchHelpInfer", "MediaProjection 停止"); inferRunning.set(false); imageReader?.close() }
+        mediaProjection?.registerCallback(object : android.media.projection.MediaProjection.Callback() {
+            override fun onStop() { Log.d(TAG, "MediaProjection 停止"); inferRunning.set(false); imageReader?.close() }
         }, Handler(Looper.getMainLooper()))
-        captureVirtualDisplay = mediaProjection?.createVirtualDisplay("AimbotCapture", captureW, captureH, screenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader!!.surface, null, null)
+        captureVirtualDisplay = mediaProjection?.createVirtualDisplay("AimbotCapture", captureW, captureH, screenDensity,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, imageReader!!.surface, null, null)
     }
 
     private fun startInferLoop() {
@@ -1208,19 +1006,13 @@ class FloatService : Service() {
                 if (image == null) { Thread.yield(); continue }
                 val hwBuf = image.hardwareBuffer
                 try {
-                    // 录屏: 把当前帧转发给 MediaRecorder
                     if (recordEnabled && recordSurface != null && hwBuf != null) {
                         try {
                             val canvas = recordSurface!!.lockHardwareCanvas()
                             try {
                                 val bmp = Bitmap.wrapHardwareBuffer(hwBuf, null)
-                                if (bmp != null) {
-                                    canvas.drawBitmap(bmp, 0f, 0f, null)
-                                    bmp.recycle()
-                                }
-                            } finally {
-                                recordSurface!!.unlockCanvasAndPost(canvas)
-                            }
+                                if (bmp != null) { canvas.drawBitmap(bmp, 0f, 0f, null); bmp.recycle() }
+                            } finally { recordSurface!!.unlockCanvasAndPost(canvas) }
                         } catch (_: Exception) {}
                     }
                     hasDetects.set(false)
@@ -1234,8 +1026,7 @@ class FloatService : Service() {
                     if (result != null) {
                         val count = result.size / 6
                         if (count > 0) {
-                            val cid = result[0].toInt()
-                            val sc = result[1]
+                            val cid = result[0].toInt(); val sc = result[1]
                             val className = currentClasses[cid] ?: "unknown"
                             Log.d(TAG, "detect: count=$count, classId=$cid ($className) score=${"%.3f".format(sc)}")
                         }
@@ -1272,12 +1063,11 @@ class FloatService : Service() {
                     // 按住激发: 物理手指按在触发区或开镜区时都能触发自瞄
                     val holdToAimActive = if (aimHoldEnabled) {
                         val adsAimTrigger = triggerEnabled && autoTriggerAdsEnabled
-                        if (adsAimTrigger) {
-                            true
-                        } else {
-                        val fingerOnTrigger = touchClient?.isFingerInTriggerZone() ?: false
-                        val fingerOnAds = touchClient?.isFingerInAdsZone() ?: false
-                        fingerOnTrigger || fingerOnAds
+                        if (adsAimTrigger) { true }
+                        else {
+                            val fingerOnTrigger = touchClient?.isFingerInTriggerZone() ?: false
+                            val fingerOnAds = touchClient?.isFingerInAdsZone() ?: false
+                            fingerOnTrigger || fingerOnAds
                         }
                     } else true
 
@@ -1348,12 +1138,9 @@ class FloatService : Service() {
         val rawRotation = actualDisplayRotation()
         val rotation = currentDisplayRotation()
         Log.d(TAG, "orientation changed: raw=$rawRotation effective=$rotation mode=$touchOrientationMode display=${screenWidth}x${screenHeight} capture=${captureW}x${captureH}")
-        // Use current display dimensions for orientation and resolution
         touchClient?.setResolution(screenWidth, screenHeight, deviceAbsMaxX, deviceAbsMaxY)
         touchClient?.setOrientationConfig(rotation)
         centerX = captureW / 2f; centerY = captureH / 2f
-
-        // Update overlay positions (UI uses current display metrics)
         val ov = triggerOverlay
         if (triggerOverlayAdded && ov != null) {
             val size = dp(triggerTouchRange.coerceAtLeast(30))
@@ -1371,36 +1158,25 @@ class FloatService : Service() {
                 wm.updateViewLayout(overlayView, p)
             }
         }
-        if (guiAdded && guiVisible) {
-            wm.removeView(guiPanel); guiAdded = false; showGui()
-        }
-
-        // Resize capture without recreating VirtualDisplay (avoids SecurityException)
+        if (guiAdded && guiVisible) { wm.removeView(guiPanel); guiAdded = false; showGui() }
         restartCapture()
     }
 
     private fun restartCapture() {
         val curW = screenWidth; val curH = screenHeight
-        if (captureW == curW && captureH == curH) return  // no change
-
+        if (captureW == curW && captureH == curH) return
         val wasRunning = inferRunning.getAndSet(false)
         Log.d(TAG, "restartCapture: wasRunning=$wasRunning newSize=${curW}x${curH}")
         executor.execute {
             try { Thread.sleep(200) } catch (_: Exception) {}
-            // Close old reader
-            val oldReader = imageReader
-            imageReader = null
+            val oldReader = imageReader; imageReader = null
             try { oldReader?.close() } catch (_: Exception) {}
-            // Create new reader at new size
             imageReader = ImageReader.newInstance(curW, curH, PixelFormat.RGBA_8888, 2)
-            // Resize VirtualDisplay and attach new surface
             try {
                 captureVirtualDisplay?.resize(curW, curH, screenDensity)
                 captureVirtualDisplay?.setSurface(imageReader!!.surface)
                 Log.d(TAG, "restartCapture: resized to ${curW}x${curH}")
-            } catch (e: Exception) {
-                Log.w(TAG, "VirtualDisplay resize failed: ${e.message}")
-            }
+            } catch (e: Exception) { Log.w(TAG, "VirtualDisplay resize failed: ${e.message}") }
             captureW = curW; captureH = curH
             touchClient?.setResolution(curW, curH, deviceAbsMaxX, deviceAbsMaxY)
             applyTouchOrientationConfig()
@@ -1429,35 +1205,13 @@ class FloatService : Service() {
         override fun isFingerInAdsZone(): Boolean = delegate?.isFingerInAdsZone() == true
         override fun setFireZone(left: Int, top: Int, right: Int, bottom: Int) { delegate?.setFireZone(left, top, right, bottom) }
         override fun isFingerInFireZone(): Boolean = delegate?.isFingerInFireZone() == true
-        override fun setJoystickZone(left: Int, top: Int, right: Int, bottom: Int) { delegate?.setJoystickZone(left, top, right, bottom) }
-        override fun isFingerInJoystickZone(): Boolean = delegate?.isFingerInJoystickZone() == true
-        override fun liftJoystickFinger(): Boolean = delegate?.liftJoystickFinger() == true
-        override fun setInputMethod(method: Int) { delegate?.setInputMethod(method) }
-        override fun initRemote(): Boolean = delegate?.initRemote() == true
-        override fun setResolution(screenW: Int, screenH: Int, devW: Int, devH: Int) { delegate?.setResolution(screenW, screenH, devW, devH) }
+        override fun isConnectedToRoot(): Boolean = delegate?.isConnectedToRoot() == true
+        override fun destroyRemote() { delegate?.destroyRemote() }
+        override fun setResolution(w: Int, h: Int, maxX: Int, maxY: Int) { delegate?.setResolution(w, h, maxX, maxY) }
         override fun setOrientationConfig(rotation: Int) { delegate?.setOrientationConfig(rotation) }
+        override fun setInputMethod(method: Int) { delegate?.setInputMethod(method) }
         override fun startGeteventListener() { delegate?.startGeteventListener() }
         override fun stopGeteventListener() { delegate?.stopGeteventListener() }
-        override fun blockPhysicalTouch() { delegate?.blockPhysicalTouch() }
-        override fun unblockPhysicalTouch() { delegate?.unblockPhysicalTouch() }
-        override fun destroyRemote() { delegate?.destroyRemote() }
-        override fun queryDeviceAbs(devicePath: String, axis: Int): IntArray = delegate?.queryDeviceAbs(devicePath, axis) ?: intArrayOf(0, 0, 0, 0)
-        override fun findTouchDevice(): String? = delegate?.findTouchDevice()
+        override fun initRemote(): Boolean = delegate?.initRemote() ?: false
     }
-
-    override fun onDestroy() {
-        if (mediaRecorder != null) toggleRecording(false)
-        inferRunning.set(false); executor.shutdown()
-        touchClient?.stopGeteventListener()
-        touchClient?.destroyRemote()
-        touchClient?.disconnect()
-        mediaProjection?.stop()
-        cleanupViews()
-        try { stopForeground(true) } catch (_: Exception) {}
-        super.onDestroy()
-    }
-
-
-    override fun onBind(intent: Intent?) = null
 }
-
