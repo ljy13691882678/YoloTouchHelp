@@ -77,7 +77,6 @@ class AimController(
     private fun currentRecoilOffset(): Float {
         if (!recoilEnabled) return 0f
         if (!isRecoilActive()) return 0f
-        // Match the helper implementation: recoilStrength is already the final per-frame offset.
         return recoilStrength.coerceIn(0f, 80f)
     }
 
@@ -87,8 +86,58 @@ class AimController(
             if (prioritized.isNotEmpty()) prioritized else dets
         } else dets
 
+        // ========== COMMITMENT PHASE ==========
+        // Check if we have an active commitment (打完一个再切下一个)
+        val committedId = aimingState.committedTrackId
+        if (committedId >= 0) {
+            // Look for the committed target in current detections
+            val committedTarget = candidates.firstOrNull { it.trackId == committedId }
+
+            if (committedTarget != null && committedTarget.missedFrames <= 0) {
+                // Target still present — stick with it regardless of distance
+                aimingState.committedMissingFrames = 0
+                aimingState.commitFrameCount++
+                var (aimX, aimY) = computeAimPoint(committedTarget)
+                updatePredictionState(committedTarget, aimX, aimY)
+                applyPrediction(committedTarget, aimX, aimY).also {
+                    aimX = it.first
+                    aimY = it.second
+                }
+                aimingState.lastTargetX = aimX
+                aimingState.lastTargetY = aimY
+                aimingState.lockedMissedFrames = 0
+                updateLockedTarget(committedTarget)
+                return AimSolution(committedTarget, aimX, aimY, false)
+            } else {
+                // Target missing this frame — count missing frames
+                aimingState.committedMissingFrames++
+                val killFrames = aimingState.commitKillConfirmFrames.coerceIn(3, 60)
+                if (aimingState.committedMissingFrames > killFrames) {
+                    // Target confirmed killed — clear commitment, allow new selection
+                    Log.d(TAG, "commit: target $committedId missing ${aimingState.committedMissingFrames} frames, confirmed killed")
+                    clearCommitment()
+                } else {
+                    // Grace period — use last known position if still within lost tolerance
+                    val hasLock = aimingState.lockedTrackId >= 0 || aimingState.lockedTarget != null
+                    if (hasLock && !aimingState.lastTargetX.isNaN() && !aimingState.lastTargetY.isNaN() &&
+                        aimingState.lockedMissedFrames < targetLostTolerance.coerceIn(0, 10)) {
+                        aimingState.lockedMissedFrames++
+                        return AimSolution(
+                            detection = null,
+                            aimX = aimingState.lastTargetX,
+                            aimY = aimingState.lastTargetY,
+                            usingFallback = true
+                        )
+                    }
+                }
+            }
+        }
+
+        // ========== NORMAL SELECTION PHASE ==========
         val target = selectRawTarget(candidates, cx, cy)
         if (target != null && target.missedFrames <= 0) {
+            // Commit to this target
+            commitToTarget(target)
             var (aimX, aimY) = computeAimPoint(target)
             updatePredictionState(target, aimX, aimY)
             applyPrediction(target, aimX, aimY).also {
@@ -117,6 +166,32 @@ class AimController(
 
         clearLockedTarget()
         return null
+    }
+
+    private fun commitToTarget(target: DetectionInfo) {
+        if (target.trackId < 0) return  // Only commit tracked targets
+        // Don't re-commit if already committed to this target
+        if (aimingState.committedTrackId == target.trackId) return
+        aimingState.committedTrackId = target.trackId
+        aimingState.committedClassId = target.classId
+        aimingState.committedMissingFrames = 0
+        aimingState.commitFrameCount = 0
+        Log.d(TAG, "commit: NEW target trackId=${target.trackId} classId=${target.classId}")
+    }
+
+    private fun clearCommitment() {
+        aimingState.committedTrackId = -1
+        aimingState.committedClassId = -1
+        aimingState.committedMissingFrames = 0
+        aimingState.commitFrameCount = 0
+    }
+
+    private fun hasActiveCommitment(): Boolean {
+        if (aimingState.committedTrackId < 0) return false
+        val minFrames = aimingState.commitMinHoldFrames.coerceIn(0, 30)
+        if (aimingState.commitFrameCount < minFrames) return false
+        val killFrames = aimingState.commitKillConfirmFrames.coerceIn(3, 60)
+        return aimingState.committedMissingFrames <= killFrames
     }
 
     fun currentLockRayPoint(): Pair<Float, Float>? {
@@ -310,7 +385,8 @@ class AimController(
             if (Math.abs(errorX) < convergeThresh && Math.abs(errorY) < convergeThresh) {
                 aimingState.lastMoveX = 0f
                 aimingState.lastMoveY = 0f
-                if (aimingState.pointerDown && aimingState.deadzoneFrames++ >= deadzoneHoldFrames.coerceIn(0, 30)) {
+                // 有commit时不释放，打完再抬
+                if (!hasActiveCommitment() && aimingState.pointerDown && aimingState.deadzoneFrames++ >= deadzoneHoldFrames.coerceIn(0, 30)) {
                     releaseAimPointer()
                 }
                 return
@@ -367,6 +443,12 @@ class AimController(
             if (Math.abs(errorX) < convergeThresh && Math.abs(errorY) < convergeThresh) {
                 aimingState.lastMoveX = 0f
                 aimingState.lastMoveY = 0f
+                // ====== 关键修复：有commit时不释放，打完一个目标再切下一个 ======
+                if (hasActiveCommitment()) {
+                    // 有commit目标，收敛了也不抬手指，保持在目标上
+                    aimingState.deadzoneFrames = 0
+                    return
+                }
                 if (aimingState.pointerDown && aimingState.deadzoneFrames++ >= deadzoneHoldFrames.coerceIn(0, 30)) {
                     releaseAimPointer()
                     Log.d(TAG, "aim converged error=($errorX, $errorY)")
@@ -486,4 +568,3 @@ class AimController(
         clearPredictionState()
     }
 }
-
