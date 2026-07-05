@@ -184,6 +184,8 @@ class FloatService : Service() {
         initControllers()
     }
 
+    override fun onBind(intent: Intent): IBinder? = null
+
     private fun initControllers() {
         aimController = AimController(
             service = this,
@@ -935,7 +937,7 @@ class FloatService : Service() {
             if (guiVisible) hideGui()
             areaSettingsView?.apply {
                 visibility = View.VISIBLE; alpha = 0f; scaleX = 0.85f; scaleY = 0.85f
-                areas = this@FloatService.savedAreas.toMutableList(); buildUI()
+                setAreas(this@FloatService.savedAreas)
                 animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start()
             }
         }
@@ -1205,7 +1207,11 @@ class FloatService : Service() {
         override fun isFingerInAdsZone(): Boolean = delegate?.isFingerInAdsZone() == true
         override fun setFireZone(left: Int, top: Int, right: Int, bottom: Int) { delegate?.setFireZone(left, top, right, bottom) }
         override fun isFingerInFireZone(): Boolean = delegate?.isFingerInFireZone() == true
-        override fun isConnectedToRoot(): Boolean = delegate?.isConnectedToRoot() == true
+        override fun setJoystickZone(left: Int, top: Int, right: Int, bottom: Int) { delegate?.setJoystickZone(left, top, right, bottom) }
+        override fun isFingerInJoystickZone(): Boolean = delegate?.isFingerInJoystickZone() == true
+        override fun liftJoystickFinger(): Boolean = delegate?.liftJoystickFinger() ?: false
+        override fun blockPhysicalTouch() { delegate?.blockPhysicalTouch() }
+        override fun unblockPhysicalTouch() { delegate?.unblockPhysicalTouch() }
         override fun destroyRemote() { delegate?.destroyRemote() }
         override fun setResolution(w: Int, h: Int, maxX: Int, maxY: Int) { delegate?.setResolution(w, h, maxX, maxY) }
         override fun setOrientationConfig(rotation: Int) { delegate?.setOrientationConfig(rotation) }
@@ -1213,5 +1219,7 @@ class FloatService : Service() {
         override fun startGeteventListener() { delegate?.startGeteventListener() }
         override fun stopGeteventListener() { delegate?.stopGeteventListener() }
         override fun initRemote(): Boolean = delegate?.initRemote() ?: false
+        override fun queryDeviceAbs(devicePath: String, axis: Int): IntArray = delegate?.queryDeviceAbs(devicePath, axis) ?: intArrayOf()
+        override fun findTouchDevice(): String? = delegate?.findTouchDevice()
     }
 }
