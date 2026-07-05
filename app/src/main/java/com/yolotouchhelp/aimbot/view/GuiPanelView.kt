@@ -56,6 +56,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onShowDetectionBoxChanged: ((Boolean) -> Unit)? = null
     var onShowCenterDotChanged: ((Boolean) -> Unit)? = null
     var onShowLockRayChanged: ((Boolean) -> Unit)? = null
+    var onShowDetectionClassIdsChanged: ((Set<Int>) -> Unit)? = null
     var onAreaSettingsToggle: (() -> Unit)? = null
     var onRecordEnabledChanged: ((Boolean) -> Unit)? = null
     var onAutoSaveDatasetChanged: ((Boolean) -> Unit)? = null
@@ -111,6 +112,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var showDetectionBox = false
     var showCenterDot = false
     var showLockRay = false
+    var showDetectionClassIds: Set<Int> = emptySet()
     var triggerEnabled = false
     var triggerReactionSpeed = 100
     var triggerCooldown = 200
@@ -304,6 +306,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("showDetectionBox", showDetectionBox)
             put("showCenterDot", showCenterDot)
             put("showLockRay", showLockRay)
+            put("showDetectionClassIds", JSONArray(showDetectionClassIds.toList()))
             put("triggerEnabled", triggerEnabled)
             put("triggerReactionSpeed", triggerReactionSpeed)
             put("triggerCooldown", triggerCooldown)
@@ -350,6 +353,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                     put("name", name)
                     put("aimSelected", id in aimSelected)
                     put("triggerSelected", id in triggerSelected)
+                    put("showDetectionSelected", id in (if (showDetectionClassIds.isEmpty()) classMap.keys else showDetectionClassIds))
                     put("prioritySelected", priorityClass == id)
                     put("aimOffset", (classAimOffsets[id] ?: 0f).toDouble())
                     put("boxAimRatio", (classBoxAimRatios[id] ?: 0.5f).toDouble())
@@ -362,6 +366,16 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
 
     private fun effectiveSelection(source: Set<Int>): Set<Int> {
         return if (source.isEmpty()) classMap.keys.toSet() else source
+    }
+
+    private fun updateShowDetectionClass(id: Int, enabled: Boolean) {
+        if (showDetectionClassIds.isEmpty()) {
+            showDetectionClassIds = classMap.keys.toMutableSet()
+        }
+        if (enabled) showDetectionClassIds = showDetectionClassIds + id
+        else showDetectionClassIds = showDetectionClassIds - id
+        onShowDetectionClassIdsChanged?.invoke(showDetectionClassIds.toSet())
+        pushState()
     }
 
     private fun updateAimClass(id: Int, enabled: Boolean) {
@@ -446,6 +460,11 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
         @JavascriptInterface
         fun setTriggerClass(classId: Int, enabled: Boolean) {
             post { updateTriggerClass(classId, enabled) }
+        }
+
+        @JavascriptInterface
+        fun setShowDetectionClass(classId: Int, enabled: Boolean) {
+            post { updateShowDetectionClass(classId, enabled) }
         }
 
         @JavascriptInterface
