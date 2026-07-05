@@ -19,6 +19,7 @@ class OverlayCanvasView(context: Context) : View(context) {
     var showDetectionBox: Boolean = false
     var showCenterDot: Boolean = false
     var showLockRay: Boolean = false
+    var enabledClassIds: Set<Int>? = null
     private var lockRayX = Float.NaN
     private var lockRayY = Float.NaN
 
@@ -106,6 +107,7 @@ class OverlayCanvasView(context: Context) : View(context) {
             val rangeSq = (rangeRadius * rangeRadius).toFloat()
 
             for (det in dets) {
+                if (enabledClassIds != null && det.classId !in enabledClassIds!!) continue
                 val rect = det.rect
                 val boxCx = (rect.left + rect.right) * 0.5f
                 val boxCy = (rect.top + rect.bottom) * 0.5f
