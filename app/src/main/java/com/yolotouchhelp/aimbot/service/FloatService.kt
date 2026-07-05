@@ -122,6 +122,7 @@ class FloatService : Service() {
     private var kalmanBoxSmooth = 0.60f
     private var kalmanMatchIouThreshold = 0.20f
     private var showLockRay = false
+    private var showDetectionClassIds: MutableSet<Int> = mutableSetOf()
     private var targetLostTolerance = 2
     private var lockBoxThreshold = 0.35f
     private var lockCenterWeight = 0.3f
@@ -309,6 +310,7 @@ class FloatService : Service() {
         aimOffsetYRatio = cfg.aimOffsetYRatio
         aimSwayAmplitude = cfg.aimSwayAmplitude
         showLockRay = cfg.showLockRay
+        showDetectionClassIds = cfg.showDetectionClassIds.toMutableSet()
         targetLostTolerance = cfg.targetLostTolerance
         lockBoxThreshold = cfg.lockBoxThreshold
         lockCenterWeight = cfg.lockCenterWeight
@@ -701,7 +703,7 @@ class FloatService : Service() {
                 }
                 Log.d(TAG, "模型类别: $currentClasses, aimClasses=$aimClasses, triggerClasses=$triggerClasses")
                 // Update GUI class list
-                if (guiAdded) { guiPanel.classMap = currentClasses; guiPanel.aimClasses = aimClasses.toMutableSet(); guiPanel.triggerClasses = triggerClasses.toMutableSet(); guiPanel.buildUI() }
+                if (guiAdded) { guiPanel.classMap = currentClasses; guiPanel.aimClasses = aimClasses.toMutableSet(); guiPanel.triggerClasses = triggerClasses.toMutableSet(); guiPanel.showDetectionClassIds = currentClasses.keys; showDetectionClassIds = currentClasses.keys.toMutableSet(); guiPanel.buildUI() }
                 broadcastState(ProjectionHolder.currentState)
             } else { Log.e(TAG, "模型切换失败: $filename") }
         } catch (e: Exception) { Log.e(TAG, "模型切换异常: ${e.message}") }
@@ -746,6 +748,7 @@ class FloatService : Service() {
             guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
             guiPanel.edgeReturnStrength = edgeReturnStrength
             guiPanel.touchOrientationMode = touchOrientationMode
+            guiPanel.showDetectionClassIds = showDetectionClassIds.toSet()
             guiPanel.buildUI()
             guiPanel.visibility = View.VISIBLE; guiPanel.alpha = 0f; guiPanel.scaleX = 0.85f; guiPanel.scaleY = 0.85f
             guiPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start(); guiVisible = true; return
@@ -797,6 +800,7 @@ class FloatService : Service() {
         guiPanel.kalmanMatchIouThreshold = cfg.kalmanMatchIouThreshold
         guiPanel.targetLostTolerance = cfg.targetLostTolerance
         guiPanel.showLockRay = cfg.showLockRay
+        guiPanel.showDetectionClassIds = cfg.showDetectionClassIds
         guiPanel.lockBoxThreshold = cfg.lockBoxThreshold
         guiPanel.lockCenterWeight = cfg.lockCenterWeight
         guiPanel.moveSmooth = cfg.moveSmooth
@@ -896,6 +900,12 @@ class FloatService : Service() {
             overlayView.showLockRay = it
             if (!it) overlayView.updateLockRay(null, null)
             ConfigManager.updateConfig { showLockRay = it }
+        }
+        guiPanel.onShowDetectionClassIdsChanged = { ids ->
+            showDetectionClassIds = ids.toMutableSet()
+            overlayView.enabledClassIds = ids
+            overlayView.postInvalidate()
+            ConfigManager.updateConfig { showDetectionClassIds = ids }
         }
         guiPanel.onTargetLostToleranceChanged = { targetLostTolerance = it; aimController.targetLostTolerance = it; ConfigManager.updateConfig { targetLostTolerance = it } }
         guiPanel.onLockBoxThresholdChanged = { lockBoxThreshold = it; aimController.lockBoxThreshold = it; ConfigManager.updateConfig { lockBoxThreshold = it } }
@@ -1254,7 +1264,10 @@ class FloatService : Service() {
                         rawDetections
                     }
                     hasDetects.set(lastDetections.isNotEmpty())
-                    mainHandler.post { overlayView.updateDetections(lastDetections) }
+                    mainHandler.post {
+                        overlayView.enabledClassIds = showDetectionClassIds.ifEmpty { null }
+                        overlayView.updateDetections(lastDetections)
+                    }
 
                     // 按住激发: 物理手指按在触发区或开镜区时都能触发自瞄
                     val holdToAimActive = if (aimHoldEnabled) {
