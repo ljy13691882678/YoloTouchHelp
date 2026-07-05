@@ -1,4 +1,4 @@
-// touch_core.cpp — Core touch injection logic
+// touch_core.cpp — Core touch injection logic (OPTIMIZED)
 // Based on native_touch.cpp + reader threads from TouchHelperA
 // Shared by JNI (Shizuku) and root_daemon (su)
 
@@ -17,6 +17,7 @@
 #include <ctime>
 #include <mutex>
 #include <vector>
+#include <atomic>
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -95,16 +96,8 @@ static Zone g_joystick_zone;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
-static void genRandomString(char* str, int len) {
-    srand(static_cast<unsigned>(time(nullptr)) + len);
-    for (int i = 0; i < len - 1; ++i) {
-        int flag = rand() % 3;
-        if (flag == 0)      str[i] = static_cast<char>('A' + rand() % 26);
-        else if (flag == 1) str[i] = static_cast<char>('a' + rand() % 26);
-        else                str[i] = static_cast<char>('0' + rand() % 10);
-    }
-    str[len - 1] = '\0';
-}
+// [FIX] 删除 genRandomString —— 不再使用 srand/rand，线程安全
+// uinput 设备名现在直接从 touch_chip_names 选取
 
 static void pushEvent(int& count, unsigned short type, unsigned short code, int value) {
     if (count >= static_cast<int>(std::size(g_inputBuffer.event))) return;
@@ -129,7 +122,7 @@ static bool isTrackedPhysicalFinger(size_t deviceIndex, int fingerIndex) {
     if (!finger.isDown) {
         return false;
     }
-    // Mirror the helper behavior: ignore injected fingers and only judge real fingers.
+    // Ignore injected fingers (virtual & trigger slots)
     if (deviceIndex == 0 && (fingerIndex == TOUCH_VIRTUAL_SLOT || fingerIndex == TOUCH_TRIGGER_SLOT)) {
         return false;
     }
@@ -227,16 +220,21 @@ static void touchToScreen(float devX, float devY, int touchMaxX, int touchMaxY, 
     sy = std::clamp(static_cast<int>(std::lround(rawScreenY)), 0, std::max(0, g_screen_h));
 }
 
-// ─── Upload (from native_touch.cpp) ─────────────────────────────────
+// ─── Upload ──────────────────────────────────────────────────────────
 
-// 人类化触摸：随机数生成（简单的线性同余生成器）
-static unsigned int g_human_seed = 12345;
-static inline int humanRand() {
-    g_human_seed = g_human_seed * 1103515245 + 12345;
-    return (g_human_seed / 65536) % 32768;
+// [FIX] 用 xorshift+ 替代 LCG，周期更长、不可预测
+static std::atomic<unsigned int> g_human_seed{0};
+static inline unsigned int xorshiftRand() {
+    unsigned int x = g_human_seed.load(std::memory_order_relaxed);
+    if (x == 0) x = 123456789; // fallback
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    g_human_seed.store(x, std::memory_order_relaxed);
+    return x;
 }
-static inline float humanRandFloat() {
-    return humanRand() / 32768.0f;
+static inline float randFloat() {
+    return (xorshiftRand() & 0x7FFF) / 32768.0f;
 }
 
 static void upload() {
@@ -244,63 +242,68 @@ static void upload() {
     int count = 0;
     int activeFingerCount = 0;
     bool hasActiveFinger = false;
-    size_t deviceCount = std::min(g_devices.size(), static_cast<size_t>(maxE));
 
-    for (size_t di = 0; di < deviceCount; ++di) {
-        for (int fi = 0; fi < maxF; ++fi) {
-            const TouchObj& finger = g_devices[di].fingers[fi];
-            bool wasUploaded = g_uploadedFingerDown[di][fi];
-            int slot = static_cast<int>(di * maxF + fi);
-            
-            // 深度伪装：slot限制在10个以内
-            if (slot >= 10) continue;
+    // [FIX] 只遍历 device 0，将所有虚拟手指映射到 slot 0-9
+    // 原代码 di * maxF + fi 会导致 di>=1 时 slot≥10 被跳过
+    for (int fi = 0; fi < maxF; ++fi) {
+        const TouchObj& finger = g_devices[0].fingers[fi];
+        bool wasUploaded = g_uploadedFingerDown[0][fi];
+        const int slot = fi; // slot == finger index on device 0
 
-            if (finger.isDown) {
-                hasActiveFinger = true;
-                ++activeFingerCount;
-                pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
-                if (!wasUploaded)
-                    pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, finger.id);
-                
-                // 人类化：微小的随机抖动（±1像素）
-                int jitterX = static_cast<int>((humanRandFloat() - 0.5f) * 2.0f);
-                int jitterY = static_cast<int>((humanRandFloat() - 0.5f) * 2.0f);
-                int posX = static_cast<int>(finger.pos.x) + jitterX;
-                int posY = static_cast<int>(finger.pos.y) + jitterY;
-                
-                pushEvent(count, EV_ABS, ABS_MT_POSITION_X, posX);
-                pushEvent(count, EV_ABS, ABS_MT_POSITION_Y, posY);
-                pushEvent(count, EV_ABS, ABS_X, posX);
-                pushEvent(count, EV_ABS, ABS_Y, posY);
-                
-                // 人类化：模拟压力和接触面积
-                int pressure = 128 + humanRand() % 64;  // 128-192之间波动
-                int touchMajor = 20 + humanRand() % 15;  // 20-35之间波动
-                int touchMinor = touchMajor - 5 - humanRand() % 5;
-                
-                pushEvent(count, EV_ABS, ABS_MT_PRESSURE, pressure);
-                pushEvent(count, EV_ABS, ABS_PRESSURE, pressure);
-                pushEvent(count, EV_ABS, ABS_MT_TOUCH_MAJOR, touchMajor);
-                pushEvent(count, EV_ABS, ABS_MT_TOUCH_MINOR, touchMinor);
-                pushEvent(count, EV_ABS, ABS_MT_WIDTH_MAJOR, touchMajor);
-                pushEvent(count, EV_ABS, ABS_MT_TOOL_TYPE, 0);  // MT_TOOL_FINGER
-                
-                g_uploadedFingerDown[di][fi] = true;
-            } else if (wasUploaded) {
-                pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
-                pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, -1);
-                g_uploadedFingerDown[di][fi] = false;
-            }
+        if (finger.isDown) {
+            hasActiveFinger = true;
+            ++activeFingerCount;
+            pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
+            if (!wasUploaded)
+                pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, finger.id);
+
+            // [FIX] 抖动幅度与位置和当前帧有关，避免固定的 ±1 像素模式
+            unsigned int r = xorshiftRand();
+            int jitterX = static_cast<int>(((r >> 0) & 0xFF) / 255.0f * 2.0f - 1.0f) +
+                          static_cast<int>(finger.pos.x) % 3; // 位置相关的微偏移
+            int jitterY = static_cast<int>(((r >> 8) & 0xFF) / 255.0f * 2.0f - 1.0f) +
+                          static_cast<int>(finger.pos.y) % 3;
+            int posX = static_cast<int>(finger.pos.x) + jitterX;
+            int posY = static_cast<int>(finger.pos.y) + jitterY;
+
+            pushEvent(count, EV_ABS, ABS_MT_POSITION_X, posX);
+            pushEvent(count, EV_ABS, ABS_MT_POSITION_Y, posY);
+            pushEvent(count, EV_ABS, ABS_X, posX);
+            pushEvent(count, EV_ABS, ABS_Y, posY);
+
+            // [FIX] 压力和接触面积加入位置哈希，使模式随坐标变化
+            int posHash = (static_cast<int>(finger.pos.x) * 7 +
+                           static_cast<int>(finger.pos.y) * 13) & 0xFF;
+            int pressure = 110 + (posHash + (r >> 16) % 90) % 90;   // 110~200
+            int touchMajor = 18 + (posHash + (r >> 20) % 20) % 20;  // 18~38
+            int touchMinor = std::max(1, touchMajor - 5 - static_cast<int>((r >> 24) % 10));
+
+            pushEvent(count, EV_ABS, ABS_MT_PRESSURE, pressure);
+            pushEvent(count, EV_ABS, ABS_PRESSURE, pressure);
+            pushEvent(count, EV_ABS, ABS_MT_TOUCH_MAJOR, touchMajor);
+            pushEvent(count, EV_ABS, ABS_MT_TOUCH_MINOR, touchMinor);
+            pushEvent(count, EV_ABS, ABS_MT_WIDTH_MAJOR, touchMajor);
+            pushEvent(count, EV_ABS, ABS_MT_TOOL_TYPE, 0);  // MT_TOOL_FINGER
+
+            g_uploadedFingerDown[0][fi] = true;
+        } else if (wasUploaded) {
+            pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
+            pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, -1);
+            g_uploadedFingerDown[0][fi] = false;
         }
     }
 
     pushEvent(count, EV_KEY, BTN_TOUCH, hasActiveFinger ? 1 : 0);
+    // [FIX] BTN_TOOL_FINGER: 单指=1，多指=0（真实设备行为）
     pushEvent(count, EV_KEY, BTN_TOOL_FINGER, activeFingerCount == 1 ? 1 : 0);
     pushEvent(count, EV_SYN, SYN_REPORT, 0);
-    write(g_outputFd, g_inputBuffer.event, sizeof(input_event) * count);
-}
 
-// ─── Zone detection ─────────────────────────────────────────────────
+    // [FIX] 检查 write 返回值，避免部分写入导致事件损坏
+    ssize_t written = write(g_outputFd, g_inputBuffer.event, sizeof(input_event) * count);
+    if (written != static_cast<ssize_t>(sizeof(input_event) * count)) {
+        LOGE("upload: partial write %zd/%zu", written, sizeof(input_event) * count);
+    }
+}
 
 // ─── Device scanning ────────────────────────────────────────────────
 
@@ -340,7 +343,7 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         return false;
     }
 
-    // 从真实触控芯片列表中随机选择，替代原随机字符串（提升隐蔽性）
+    // 从真实触控芯片列表中随机选择
     static const char* touch_chip_names[] = {
         "goodix_ts", "ft5x06_ts", "atmel_mxt_ts", "synaptics_dsx",
         "cyttsp5_i2c", "ilitek_ts", "novatek_ts", "focaltech_ts",
@@ -352,15 +355,15 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         0x1241, 0x1016
     };
     static const int chip_count = sizeof(touch_chip_names) / sizeof(touch_chip_names[0]);
-    int chip_idx = rand() % chip_count;
+    // [FIX] 用 xorshift 替代 srand/rand
+    int chip_idx = xorshiftRand() % chip_count;
     strncpy(uiDev.name, touch_chip_names[chip_idx], UINPUT_MAX_NAME_SIZE - 1);
     uiDev.name[UINPUT_MAX_NAME_SIZE - 1] = '\0';
-    
-    // 使用真实的触控芯片参数（I2C总线 + 真实厂商ID）
+
     uiDev.id.bustype = BUS_I2C;
     uiDev.id.vendor = touch_vendor_ids[chip_idx];
-    uiDev.id.product = 0x0001 + (rand() & 0x0F);
-    uiDev.id.version = 0x0100 + (rand() & 0x0FF);
+    uiDev.id.product = 0x0001 + (xorshiftRand() & 0x0F);
+    uiDev.id.version = 0x0100 + (xorshiftRand() & 0x0FF);
 
     ioctl(g_outputFd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
     ioctl(g_outputFd, UI_SET_EVBIT, EV_ABS);
@@ -384,7 +387,7 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOOL_FINGER);
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOUCH);
 
-    // 深度伪装：使用类似真实设备的phys路径
+    // 使用类似真实设备的phys路径
     static const char* fake_phys_paths[] = {
         "i2c/0-0038/input/input",
         "i2c/1-005d/input/input",
@@ -393,9 +396,9 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         "platform/goodix_ts.0/input/input"
     };
     static const int phys_count = sizeof(fake_phys_paths) / sizeof(fake_phys_paths[0]);
-    int phys_idx = rand() % phys_count;
+    int phys_idx = xorshiftRand() % phys_count;
     char physPath[64];
-    snprintf(physPath, sizeof(physPath), "%s%d", fake_phys_paths[phys_idx], rand() % 10);
+    snprintf(physPath, sizeof(physPath), "%s%d", fake_phys_paths[phys_idx], xorshiftRand() % 10);
     ioctl(g_outputFd, UI_SET_PHYS, physPath);
 
     input_id id{};
@@ -421,9 +424,9 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     }
     free(bits);
 
-    // 深度伪装：10个触点（和真实设备一致）
+    // 10 个触点（与真实设备一致）
     uiDev.absmin[ABS_MT_SLOT] = 0;
-    uiDev.absmax[ABS_MT_SLOT] = 9;  // 10个触点
+    uiDev.absmax[ABS_MT_SLOT] = 9;
     uiDev.absmin[ABS_MT_POSITION_X] = 0;
     uiDev.absmax[ABS_MT_POSITION_X] = screenX;
     uiDev.absmin[ABS_MT_POSITION_Y] = 0;
@@ -434,7 +437,6 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     uiDev.absmax[ABS_Y] = screenY;
     uiDev.absmin[ABS_MT_TRACKING_ID] = 0;
     uiDev.absmax[ABS_MT_TRACKING_ID] = 65535;
-    // 压力和接触面积（模拟真实触控）
     uiDev.absmin[ABS_PRESSURE] = 0;
     uiDev.absmax[ABS_PRESSURE] = 255;
     uiDev.absmin[ABS_MT_PRESSURE] = 0;
@@ -446,7 +448,7 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     uiDev.absmin[ABS_MT_WIDTH_MAJOR] = 0;
     uiDev.absmax[ABS_MT_WIDTH_MAJOR] = 255;
     uiDev.absmin[ABS_MT_TOOL_TYPE] = 0;
-    uiDev.absmax[ABS_MT_TOOL_TYPE] = 0;  // MT_TOOL_FINGER
+    uiDev.absmax[ABS_MT_TOOL_TYPE] = 0;  // MT_TOOL_FINGER only
     write(g_outputFd, &uiDev, sizeof(uiDev));
 
     if (ioctl(g_outputFd, UI_DEV_CREATE)) {
@@ -497,33 +499,34 @@ static void* deviceReader(void* arg) {
         for (size_t j = 0; j < count; j++) {
             auto& ie = batch[j];
 
+            if (ie.type == EV_SYN && ie.code == SYN_DROPPED) {
+                // [FIX] SYN_DROPPED: 丢弃当前批次之前的状态，重新同步
+                memset(dev.fingers, 0, sizeof(dev.fingers));
+                continue;
+            }
+
             if (ie.type == EV_ABS) {
                 switch (ie.code) {
                 case ABS_MT_SLOT:
-                    curSlot = ie.value;
+                    // [FIX] curSlot 边界检查，防止越界访问 fingers
+                    curSlot = std::clamp(ie.value, 0, maxF - 1);
                     break;
                 case ABS_MT_TRACKING_ID:
-                    if (curSlot >= 0 && curSlot < maxF) {
-                        if (ie.value == -1)
-                            dev.fingers[curSlot].isDown = false;
-                        else {
-                            dev.fingers[curSlot].isDown = true;
-                            dev.fingers[curSlot].id =
-                                static_cast<int>((devIdx * 2 + 1) * maxF + curSlot);
-                        }
+                    if (ie.value == -1)
+                        dev.fingers[curSlot].isDown = false;
+                    else {
+                        dev.fingers[curSlot].isDown = true;
+                        dev.fingers[curSlot].id =
+                            static_cast<int>((devIdx * 2 + 1) * maxF + curSlot);
                     }
                     break;
                 case ABS_MT_POSITION_X:
-                    if (curSlot >= 0 && curSlot < maxF) {
-                        dev.fingers[curSlot].pos.x = ie.value * dev.s2tx;
-                        dev.fingers[curSlot].isDown = true;
-                    }
+                    dev.fingers[curSlot].pos.x = ie.value * dev.s2tx;
+                    dev.fingers[curSlot].isDown = true;
                     break;
                 case ABS_MT_POSITION_Y:
-                    if (curSlot >= 0 && curSlot < maxF) {
-                        dev.fingers[curSlot].pos.y = ie.value * dev.s2ty;
-                        dev.fingers[curSlot].isDown = true;
-                    }
+                    dev.fingers[curSlot].pos.y = ie.value * dev.s2ty;
+                    dev.fingers[curSlot].isDown = true;
                     break;
                 }
             }
@@ -549,6 +552,11 @@ bool touch_init(int screenW, int screenH) {
     }
     std::lock_guard<std::mutex> guard(g_mutex);
     closeTouchLocked();
+
+    // [FIX] 用时间+地址熵初始化随机种子
+    g_human_seed.store(
+        static_cast<unsigned int>(time(nullptr) ^ reinterpret_cast<uintptr_t>(&g_human_seed)),
+        std::memory_order_relaxed);
 
     Vec2 size(static_cast<float>(screenW), static_cast<float>(screenH));
     g_screenSize = size.x > size.y ? size : Vec2(size.y, size.x);
