@@ -28,7 +28,14 @@ data class AimingState(
     var prevTargetX: Float = Float.NaN,
     var prevTargetY: Float = Float.NaN,
     var smoothVelX: Float = 0f,
-    var smoothVelY: Float = 0f
+    var smoothVelY: Float = 0f,
+    // Commitment: 打完一个再切下一个的核心状态
+    var committedTrackId: Int = -1,
+    var committedClassId: Int = -1,
+    var committedMissingFrames: Int = 0,
+    var commitKillConfirmFrames: Int = 12,   // 目标消失N帧后认为已击杀
+    var commitMinHoldFrames: Int = 3,        // 最少锁定帧数后才算正式commit
+    var commitFrameCount: Int = 0
 ) {
     fun updateVelocity(cx: Float, cy: Float) {
         if (!prevTargetX.isNaN()) {
@@ -55,6 +62,10 @@ data class AimingState(
         prevTargetX = Float.NaN; prevTargetY = Float.NaN
         smoothVelX = 0f; smoothVelY = 0f
         swayTimer = (30..90).random(); swayPulse = 0; swayDir = 0f
+        // Reset commitment
+        committedTrackId = -1
+        committedClassId = -1
+        committedMissingFrames = 0
+        commitFrameCount = 0
     }
 }
-
