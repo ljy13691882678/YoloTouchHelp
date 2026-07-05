@@ -529,8 +529,11 @@ static void* deviceReader(void* arg) {
                 }
             }
 
-            // Upload only on SYN_REPORT from physical device
-            // (virtual finger uploads happen via down/move/up API calls)
+            // Forward physical touch events through uinput so the system sees them
+            // (EVIOCGRAB captures events, so we must replay them ourselves)
+            if (ie.type == EV_SYN && ie.code == SYN_REPORT) {
+                upload();
+            }
         }
     }
 
