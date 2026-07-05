@@ -33,6 +33,7 @@ data class AppConfig(
     var range: Int = 300,
     var showCaptureRange: Boolean = false,
     var showDetectionBox: Boolean = false,
+    var showDetectionClassIds: Set<Int> = emptySet(),
     var showCenterDot: Boolean = false,
     var areaSettingsEnabled: Boolean = false,
     var areas: List<AreaConfig> = emptyList(),
@@ -117,6 +118,7 @@ object ConfigManager {
                         range = obj.optInt("range", 300),
                         showCaptureRange = obj.optBoolean("showCaptureRange", false),
                         showDetectionBox = obj.optBoolean("showDetectionBox", false),
+                        showDetectionClassIds = parseIntSet(obj.optJSONArray("showDetectionClassIds")),
                         showCenterDot = obj.optBoolean("showCenterDot", false),
                         areaSettingsEnabled = obj.optBoolean("areaSettingsEnabled", false),
                         areas = parseAreas(obj.optJSONArray("areas")),
@@ -191,6 +193,7 @@ object ConfigManager {
                     put("range", config.range)
                     put("showCaptureRange", config.showCaptureRange)
                     put("showDetectionBox", config.showDetectionBox)
+                    put("showDetectionClassIds", serializeIntSet(config.showDetectionClassIds))
                     put("showCenterDot", config.showCenterDot)
                     put("areaSettingsEnabled", config.areaSettingsEnabled)
                     put("areas", serializeAreas(config.areas))
