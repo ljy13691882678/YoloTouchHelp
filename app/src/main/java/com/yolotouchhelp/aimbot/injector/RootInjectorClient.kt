@@ -10,6 +10,7 @@ import java.io.OutputStream
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import kotlin.math.abs
 
 /**
  * RootInjectorClient (OPTIMIZED)
@@ -147,22 +148,36 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
         execOk("UP")
     }
 
-    // [FIX] swipe 步进间隔随机化（6~12ms），避免固定节奏
+    // [SMOOTH] swipe 使用 cubic ease-in-out 模拟真人手指的加速度曲线
+    // 真人手指滑动: 起手慢 → 中间快 → 收尾慢，而非机械式线性等距步进
     override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
         execOk("DOWN $x1 $y1")
         if (durationMs > 0) {
-            val steps = maxOf(1, durationMs / 8)
+            val baseSteps = maxOf(4, durationMs / 8)       // 至少4步保证平滑
+            val steps = baseSteps + (Math.random() * 3).toInt()  // 步数微随机(4~+2)
+            var lastX = x1
+            var lastY = y1
             for (i in 1..steps) {
-                val cx = x1 + (x2 - x1) * i / steps
-                val cy = y1 + (y2 - y1) * i / steps
-                execOk("MOVE $cx $cy")
-                // 6~12ms 随机间隔
-                val sleepMs = 6 + (Math.random() * 7).toInt()
+                // cubic ease-in-out: t³(3t-2)²  → 使轨迹两端慢中间快
+                val t = i.toFloat() / steps.toFloat()
+                val easedT = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f) * (-2f * t + 2f) * (-2f * t + 2f) / 2f
+                val cx = x1 + ((x2 - x1).toFloat() * easedT).toInt()
+                val cy = y1 + ((y2 - y1).toFloat() * easedT).toInt()
+                // 跳过与上一步完全相同的点（节省IPC）
+                if (cx != lastX || cy != lastY) {
+                    execOk("MOVE $cx $cy")
+                    lastX = cx
+                    lastY = cy
+                }
+                // 可变间隔: 起止段较慢(10~15ms)，中间段较快(5~9ms)
+                val midBonus = (1f - abs(2f * t - 1f)) * 6f  // 中间最多减6ms
+                val sleepMs = (5 + (Math.random() * 11).toInt() - midBonus.toInt()).coerceIn(4, 16)
                 Thread.sleep(sleepMs.toLong())
             }
+            // 确保终点精确到达
+            if (lastX != x2 || lastY != y2) execOk("MOVE $x2 $y2")
             execOk("UP")
         }
-        // durationMs == 0: 保持按下（由调用方后续 moveTo + lift）
     }
 
     override fun moveTo(x: Int, y: Int) {
