@@ -422,7 +422,8 @@
             activeTab: 0,
             modelRunning: false,
             classEntries: [],
-            modelNames: []
+            modelNames: [],
+            showDetectionClassIds: []
         };
 
         function host(method, ...args) {
@@ -534,6 +535,21 @@
 
         function setTriggerClass(id, enabled) {
             host("setTriggerClass", id, enabled);
+        }
+
+        function toggleDetectionClass(id) {
+            let ids = state.showDetectionClassIds;
+            const className = state.classEntries.find(c => c.id === id)?.name || `#${id}`;
+            const idx = ids.indexOf(id);
+            if (idx >= 0) {
+                if (ids.length <= 1) return; // keep at least one
+                ids = ids.filter(x => x !== id);
+            } else {
+                ids = [...ids, id];
+            }
+            state.showDetectionClassIds = ids;
+            renderContent();
+            host("setShowDetectionClass", id, idx >= 0 ? false : true);
         }
 
         function setClassAimOffset(id, value) {
@@ -873,6 +889,11 @@
                     ${switchRow("显示截取范围", "showCaptureRange", state.showCaptureRange)}
                     ${sliderRow({ label: "截取范围", key: "range", value: state.range, min: 50, max: 800, step: 1, type: "int", format: "px" })}
                     ${switchRow("显示检测框", "showDetectionBox", state.showDetectionBox)}
+                    ${Array.isArray(state.classEntries) && state.classEntries.length > 1 ? `
+                    <div style="margin-top:8px">
+                        <div class="setting-desc" style="margin-bottom:6px;color:var(--text-sub)">筛选显示 class</div>
+                        <div class="chip-list">${state.classEntries.map(c => `<button class="chip${(!state.showDetectionClassIds.length || state.showDetectionClassIds.includes(c.id)) ? " active" : ""}" onclick="toggleDetectionClass(${c.id})">${escapeHtml(c.name)}</button>`).join("")}</div>
+                    </div>` : ""}
                     ${switchRow("显示中心点", "showCenterDot", state.showCenterDot)}
                     ${switchRow("录屏", "recordEnabled", state.recordEnabled, "H265 编码，60 帧，保存到 Pictures/Screenshots")}
                     ${switchRow("自动保存数据集", "autoSaveDataset", state.autoSaveDataset, "检测到目标时自动截图+YOLO标注，保存到应用外部存储")}
