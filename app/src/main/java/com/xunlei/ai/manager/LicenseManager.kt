@@ -69,31 +69,41 @@ class LicenseManager private constructor(private val context: Context) {
             val valStr = crypto.randomValue()
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
-            // RC4 hex 加密，key=加密密钥
-            val enc = crypto.encrypt(raw, ENC_KEY)
-            // 后台开启"提交参数放DATA变量"，格式: data=加密值
-            val body = "data=$enc"
 
-            val resp = post(body)
-            if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
-
-            val json = parseResponse(resp.getOrThrow().trim())
-            val code = json.optInt("code", -1)
-            if (code == 200) {
-                val msg = json.getJSONObject("msg")
-                prefs.edit().apply {
-                    putString(K_KAMI, kami)
-                    putString(K_TOKEN, msg.getString("token"))
-                    putLong(K_EXPIRE, msg.optLong("vip", 0))
-                    putBoolean(K_ACTIVE, true)
-                    putString(K_KM_TYPE, msg.optString("kmtype", "day"))
-                }.apply()
-                Log.i(TAG, "激活成功")
-                startHeartbeat()
-                Result.success(json)
-            } else {
-                Result.failure(LicenseException(code, errMsg(json)))
+            // 尝试两种请求格式，直到成功
+            var lastError: JSONObject? = null
+            val formats = listOf(
+                // 方式1: 明文（后台可能未开启加密，或加密配置不生效）
+                raw,
+                // 方式2: RC4 hex 加密
+                crypto.encrypt(raw, ENC_KEY),
+                // 方式3: data=加密值
+                "data=" + crypto.encrypt(raw, ENC_KEY)
+            )
+            for (body in formats) {
+                val resp = post(body)
+                if (resp.isFailure) continue
+                val json = parseResponse(resp.getOrThrow().trim())
+                val code = json.optInt("code", -1)
+                if (code == 200) {
+                    val msg = json.getJSONObject("msg")
+                    prefs.edit().apply {
+                        putString(K_KAMI, kami)
+                        putString(K_TOKEN, msg.getString("token"))
+                        putLong(K_EXPIRE, msg.optLong("vip", 0))
+                        putBoolean(K_ACTIVE, true)
+                        putString(K_KM_TYPE, msg.optString("kmtype", "day"))
+                    }.apply()
+                    Log.i(TAG, "激活成功 (格式: ${formats.indexOf(body)})")
+                    startHeartbeat()
+                    return@withContext Result.success(json)
+                }
+                lastError = json
+                // 只有 code 100(应用不存在) 或 106(签名错误) 才尝试下一种格式
+                if (code != 100 && code != 106) break
             }
+            val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
+            Result.failure(LicenseException(err.optInt("code", -1), errMsg(err)))
         } catch (e: Exception) {
             Log.e(TAG, "激活异常", e)
             Result.failure(e)
@@ -112,19 +122,24 @@ class LicenseManager private constructor(private val context: Context) {
             val valStr = crypto.randomValue()
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts", "&kamitoken=$token")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
-            val enc = crypto.encrypt(raw, ENC_KEY)
-            val body = "data=$enc"
 
-            val resp = post(body)
-            if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
-
-            val json = parseResponse(resp.getOrThrow().trim())
-            if (json.optInt("code", -1) == 200) {
-                val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
-                prefs.edit().putLong(K_EXPIRE, et).apply()
-                Result.success(json)
-            } else {
-                val ex = LicenseException(json.optInt("code", -1), errMsg(json))
+            val formats = listOf(raw, crypto.encrypt(raw, ENC_KEY), "data=" + crypto.encrypt(raw, ENC_KEY))
+            var lastError: JSONObject? = null
+            for (body in formats) {
+                val resp = post(body)
+                if (resp.isFailure) continue
+                val json = parseResponse(resp.getOrThrow().trim())
+                val code = json.optInt("code", -1)
+                if (code == 200) {
+                    val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
+                    prefs.edit().putLong(K_EXPIRE, et).apply()
+                    return@withContext Result.success(json)
+                }
+                lastError = json
+                if (code != 100 && code != 106) break
+            }
+            val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
+            val ex = LicenseException(err.optInt("code", -1), errMsg(err))
                 if (ex.code == 152 || ex.code == 153) {
                     prefs.edit().putBoolean(K_ACTIVE, false).apply()
                     stopHeartbeat()
