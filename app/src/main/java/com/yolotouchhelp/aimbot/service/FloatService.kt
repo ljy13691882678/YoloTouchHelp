@@ -214,8 +214,6 @@ class FloatService : Service() {
             screenHeight = { screenHeight },
             dp = { dp(it) }
         )
-        // FIX: 连接后坐力脉冲回调 — 开火时通知 AimController
-        triggerController.onFire = { aimController.bumpRecoil() }
         // Load config to controllers
         loadConfigToControllers()
     }

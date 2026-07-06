@@ -70,25 +70,14 @@ class AimController(
     private var predictedVelocityY = 0f
 
     private fun isRecoilActive(): Boolean {
-        // FIX: 不再返回 true 来每帧叠加后坐力
-        //      改为由 bumpRecoil() 一次性脉冲触发
-        return false
-    }
-
-    private var recoilAccumulated = 0f
-    private val recoilDecay = 0.55f  // 每帧衰减系数，约5帧归零
-
-    fun bumpRecoil() {
-        if (!recoilEnabled) return
-        recoilAccumulated = (recoilAccumulated + recoilStrength.coerceIn(0f, 30f)).coerceIn(0f, 50f)
+        val client = touchClient() ?: return false
+        return if (aimHoldEnabled) client.isFingerInTriggerZone() else false
     }
 
     private fun currentRecoilOffset(): Float {
         if (!recoilEnabled) return 0f
-        if (recoilAccumulated <= 0.5f) { recoilAccumulated = 0f; return 0f }
-        val offset = recoilAccumulated
-        recoilAccumulated *= recoilDecay
-        return offset
+        if (!isRecoilActive()) return 0f
+        return recoilStrength.coerceIn(0f, 80f)
     }
 
     fun selectTarget(dets: List<DetectionInfo>, cx: Float, cy: Float): AimSolution? {
@@ -361,14 +350,10 @@ class AimController(
     }
 
     fun executeAiming(targetX: Float, targetY: Float, cx: Float, cy: Float) {
-        // FIX: 当触摸已按下时，用实际触控位置计算误差
-        //      否则永远用屏幕中心，PID 的 error 永不变化导致积分溢出外跳
-        val actualCx = if (aimingState.pointerDown) aimingState.centerX else cx
-        val actualCy = if (aimingState.pointerDown) aimingState.centerY else cy
         if (aimMode == 1) {
-            executeAimingBezier(targetX, targetY, actualCx, actualCy)
+            executeAimingBezier(targetX, targetY, cx, cy)
         } else {
-            executeAimingPid(targetX, targetY, actualCx, actualCy)
+            executeAimingPid(targetX, targetY, cx, cy)
         }
     }
 
