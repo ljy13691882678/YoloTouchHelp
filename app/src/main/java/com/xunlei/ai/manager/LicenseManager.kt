@@ -82,18 +82,18 @@ class LicenseManager private constructor(private val context: Context) {
         return out
     }
 
-    /** RC4加密 → hex小写 */
+    /** RC4加密 → hex小写 (GBK编码) */
     private fun encrypt(plaintext: String): String =
-        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(Charsets.UTF_8))
+        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(Charsets.forName("GBK")))
             .joinToString("") { "%02x".format(it) }
 
-    /** RC4解密: hex → RC4 → 明文 */
+    /** RC4解密: hex → RC4 → 明文 (GBK解码) */
     private fun decrypt(hexStr: String): String {
         val bytes = ByteArray(hexStr.length / 2)
         for (i in bytes.indices) {
             bytes[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
-        return String(rc4(RC4_KEY.toByteArray(), bytes), Charsets.UTF_8)
+        return String(rc4(RC4_KEY.toByteArray(), bytes), Charsets.forName("GBK"))
     }
 
     // ==================== 卡密登录 ====================
