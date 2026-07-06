@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -17,6 +18,9 @@ import java.util.concurrent.TimeUnit
  * 微验 llua.cn 网络验证管理器 V2
  *
  * 接口文档: https://app.llua.cn/setapi/v2/help/
+ *
+ * 加密: BASE64加密-2 (自定义Base64编码表)
+ * 传输: 提交参数放DATA变量[V1] → data=加密值
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -27,8 +31,9 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "57549"                              // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                  // 程序秘钥
         private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f" // 请求令牌
-        private const val ENC_KEY = "CRaM54xWs2DxDPC"                   // RC4加密密钥
-        private const val BASE_URL = "http://wy.llua.cn/v2/"
+        // 自定义Base64编码表 (64字符)
+        private const val CUSTOM_BASE64 = "HMyUxn0ZLGAfczwq5O4h7EvGF41rOI1CMNd8c2FjkVylMVcP9tPsCyfgY0lAeEQ7"
+        private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
@@ -57,6 +62,48 @@ class LicenseManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var hbJob: Job? = null
 
+    // 标准Base64 → 自定义Base64 映射
+    private val stdToCustom: IntArray by lazy {
+        val std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val arr = IntArray(128) { -1 }
+        std.forEachIndexed { i, c -> arr[c.code] = i }
+        val map = IntArray(64)
+        CUSTOM_BASE64.forEachIndexed { i, c -> map[i] = arr[c.code] }
+        map
+    }
+
+    // 自定义Base64 → 标准Base64 映射
+    private val customToStd: CharArray by lazy {
+        val std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        val arr = CharArray(128) { '?' }
+        CUSTOM_BASE64.forEachIndexed { i, c -> arr[c.code] = std[i] }
+        arr
+    }
+
+    /**
+     * 自定义Base64加密: 明文 → 标准Base64 → 替换字符 → 自定义Base64
+     */
+    private fun customEncode(plaintext: String): String {
+        val std = Base64.encodeToString(plaintext.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        val sb = StringBuilder(std.length)
+        for (c in std) {
+            val idx = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".indexOf(c)
+            sb.append(if (idx >= 0) CUSTOM_BASE64[idx] else c)
+        }
+        return sb.toString()
+    }
+
+    /**
+     * 自定义Base64解密: 自定义Base64 → 还原字符 → 标准Base64 → 明文
+     */
+    private fun customDecode(encoded: String): String {
+        val sb = StringBuilder(encoded.length)
+        for (c in encoded) {
+            sb.append(if (c.code < 128) customToStd[c.code] else c)
+        }
+        return String(Base64.decode(sb.toString(), Base64.NO_WRAP), Charsets.UTF_8)
+    }
+
     private fun deviceId(): String =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
@@ -81,7 +128,7 @@ class LicenseManager private constructor(private val context: Context) {
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sig&value=$valStr"
 
             val (json, code) = doRequest(raw)
-            Log.d(TAG, "激活响应: code=$code, json=$json")
+            Log.d(TAG, "激活响应: code=$code")
             if (code == 200) {
                 val msg = json.getJSONObject("msg")
                 prefs.edit().apply {
@@ -136,21 +183,35 @@ class LicenseManager private constructor(private val context: Context) {
 
     // ==================== 请求 ====================
 
-    private fun doRequest(data: String): Pair<JSONObject, Int> {
-        val body = RequestBody.create("text/plain".toMediaType(), data)
-        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(body).build()
+    private fun doRequest(raw: String): Pair<JSONObject, Int> {
+        // 加密: 自定义Base64 → data=加密值
+        val encoded = customEncode(raw)
+        val body = "data=$encoded"
+        Log.d(TAG, "请求体: $body")
+
+        val reqBody = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body)
+        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(reqBody).build()
         return try {
             val r = http.newCall(req).execute()
             val respBody = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, body: $respBody")
+            Log.d(TAG, "HTTP ${r.code}, 响应: $respBody")
+
             if (respBody.isEmpty()) {
                 JSONObject("""{"code":-1,"msg":"服务器返回空 (HTTP ${r.code})"}""") to -1
             } else {
+                // 解密响应
+                val plaintext = try {
+                    customDecode(respBody)
+                } catch (_: Exception) {
+                    // 可能服务器返回明文
+                    respBody
+                }
+                Log.d(TAG, "解密后: $plaintext")
                 try {
-                    val json = JSONObject(respBody)
+                    val json = JSONObject(plaintext)
                     json to json.optInt("code", -1)
                 } catch (_: Exception) {
-                    JSONObject("""{"code":-1,"msg":"$respBody"}""") to -1
+                    JSONObject("""{"code":-1,"msg":"解析失败: $plaintext"}""") to -1
                 }
             }
         } catch (e: IOException) {
