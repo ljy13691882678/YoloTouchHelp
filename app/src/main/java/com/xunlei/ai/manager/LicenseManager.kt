@@ -11,28 +11,24 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
  *
- * 接口文档: https://app.llua.cn/setapi/v2/help/
- *
- * 加密: BASE64加密-2 (自定义Base64编码表)
- * 传输: 提交参数放DATA变量[V1] → data=加密值
+ * 后台配置:
+ *   加密: BASE64加密 (标准)
+ *   签名: 关闭
+ *   传输: DATA变量[V1] → data=加密值
  */
 class LicenseManager private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "LicenseManager"
 
-        // ========== llua.cn 后台参数 ==========
         private const val API_ID = "57549"                              // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                  // 程序秘钥
         private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f" // 请求令牌
-        // 自定义Base64编码表 (64字符)
-        private const val CUSTOM_BASE64 = "HMyUxn0ZLGAfczwq5O4h7EvGF41rOI1CMNd8c2FjkVylMVcP9tPsCyfgY0lAeEQ7"
         private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -62,61 +58,17 @@ class LicenseManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var hbJob: Job? = null
 
-    // 标准Base64 → 自定义Base64 映射
-    private val stdToCustom: IntArray by lazy {
-        val std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        val arr = IntArray(128) { -1 }
-        std.forEachIndexed { i, c -> arr[c.code] = i }
-        val map = IntArray(64)
-        CUSTOM_BASE64.forEachIndexed { i, c -> map[i] = arr[c.code] }
-        map
-    }
-
-    // 自定义Base64 → 标准Base64 映射
-    private val customToStd: CharArray by lazy {
-        val std = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-        val arr = CharArray(128) { '?' }
-        CUSTOM_BASE64.forEachIndexed { i, c -> arr[c.code] = std[i] }
-        arr
-    }
-
-    /**
-     * 自定义Base64加密: 明文 → 标准Base64 → 替换字符 → 自定义Base64
-     */
-    private fun customEncode(plaintext: String): String {
-        val std = Base64.encodeToString(plaintext.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        val sb = StringBuilder(std.length)
-        for (c in std) {
-            val idx = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".indexOf(c)
-            sb.append(if (idx >= 0) CUSTOM_BASE64[idx] else c)
-        }
-        return sb.toString()
-    }
-
-    /**
-     * 自定义Base64解密: 自定义Base64 → 还原字符 → 标准Base64 → 明文
-     */
-    private fun customDecode(encoded: String): String {
-        val sb = StringBuilder(encoded.length)
-        for (c in encoded) {
-            sb.append(if (c.code < 128) customToStd[c.code] else c)
-        }
-        return String(Base64.decode(sb.toString(), Base64.NO_WRAP), Charsets.UTF_8)
-    }
-
     private fun deviceId(): String =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
 
-    private fun md5(s: String) = MessageDigest.getInstance("MD5")
-        .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+    private fun encode(data: String) = Base64.encodeToString(
+        data.toByteArray(Charsets.UTF_8), Base64.NO_WRAP
+    )
 
-    private fun sign(vararg parts: String): String {
-        val sb = StringBuilder()
-        parts.forEach { sb.append(it) }
-        sb.append("&").append(API_KEY)
-        return md5(sb.toString())
-    }
+    private fun decode(data: String) = String(
+        Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8
+    )
 
     // ==================== 卡密登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
@@ -124,8 +76,8 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            val sig = sign("kami=$kami", "&markcode=$mark", "&t=$ts")
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sig&value=$valStr"
+            // 签名开关关闭，发送 sign=0
+            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=0&value=$valStr"
 
             val (json, code) = doRequest(raw)
             Log.d(TAG, "激活响应: code=$code")
@@ -160,8 +112,7 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            val sig = sign("kami=$kami", "&markcode=$mark", "&t=$ts", "&kamitoken=$token")
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sig&kamitoken=$token&value=$valStr"
+            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=0&kamitoken=$token&value=$valStr"
 
             val (json, code) = doRequest(raw)
             if (code == 200) {
@@ -184,42 +135,32 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 请求 ====================
 
     private fun doRequest(raw: String): Pair<JSONObject, Int> {
-        // 加密: 自定义Base64 → data=加密值
-        val encoded = customEncode(raw)
+        // 标准Base64加密 → data=加密值
+        val encoded = encode(raw)
         val body = "data=$encoded"
-        Log.d(TAG, "请求体: $body")
+        Log.d(TAG, "data=$encoded")
 
         val reqBody = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body)
         val req = Request.Builder().url(BASE_URL + API_TOKEN).post(reqBody).build()
         return try {
             val r = http.newCall(req).execute()
             val respBody = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, 响应: $respBody")
+            Log.d(TAG, "HTTP ${r.code}, 响应: ${respBody.take(200)}")
 
             if (respBody.isEmpty()) {
                 JSONObject("""{"code":-1,"msg":"服务器返回空 (HTTP ${r.code})"}""") to -1
             } else {
-                // 先尝试明文 JSON，失败再 Base64 解密
+                // 先试明文，再试Base64解密
                 val plaintext = try {
-                    JSONObject(respBody) // 尝试解析，成功说明是明文
-                    respBody // 不真的解析，直接返回原文
+                    JSONObject(respBody); respBody
                 } catch (_: Exception) {
-                    try {
-                        customDecode(respBody)
-                    } catch (_: Exception) {
-                        respBody
-                    }
+                    try { decode(respBody) } catch (_: Exception) { respBody }
                 }
-                if (plaintext === respBody && respBody.length > 200) {
-                    // 明文但太长，截断显示
-                    JSONObject("""{"code":-1,"msg":"解析失败: ${respBody.take(100)}..."}""") to -1
-                } else {
-                    try {
-                        val json = JSONObject(plaintext)
-                        json to json.optInt("code", -1)
-                    } catch (_: Exception) {
-                        JSONObject("""{"code":-1,"msg":"解析失败: ${plaintext.take(80)}"}""") to -1
-                    }
+                try {
+                    val json = JSONObject(plaintext)
+                    json to json.optInt("code", -1)
+                } catch (_: Exception) {
+                    JSONObject("""{"code":-1,"msg":"${plaintext.take(80)}"}""") to -1
                 }
             }
         } catch (e: IOException) {
