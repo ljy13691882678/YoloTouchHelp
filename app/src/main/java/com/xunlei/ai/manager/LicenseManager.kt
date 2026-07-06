@@ -140,12 +140,11 @@ class LicenseManager private constructor(private val context: Context) {
             }
             val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
             val ex = LicenseException(err.optInt("code", -1), errMsg(err))
-                if (ex.code == 152 || ex.code == 153) {
-                    prefs.edit().putBoolean(K_ACTIVE, false).apply()
-                    stopHeartbeat()
-                }
-                Result.failure(ex)
+            if (ex.code == 152 || ex.code == 153) {
+                prefs.edit().putBoolean(K_ACTIVE, false).apply()
+                stopHeartbeat()
             }
+            Result.failure(ex)
         } catch (e: Exception) {
             Result.failure(e)
         }
