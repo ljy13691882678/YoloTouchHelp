@@ -138,57 +138,44 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 步骤2-5: 加密 → 发送 → 解密 → 解析 ====================
 
     private fun apiCall(raw: String): Pair<JSONObject, Int> {
-        // 步骤2: post_data = Base64加密("id=...&kami=...&sign=...&value=...")
+        // 步骤2: post_data = Base64加密(...)
+        // V2 API 直接发送加密字符串，无 data= 前缀，text/plain
         val postData = b64e(raw)
 
-        // 尝试两种格式: data=Base64 (DATA变量V1开启) / 直接Base64
-        val formats = listOf(
-            "data=" + postData.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D"),
-            postData
-        )
+        val req = Request.Builder()
+            .url(BASE_URL + API_TOKEN)
+            .post(RequestBody.create("text/plain".toMediaType(), postData))
+            .build()
 
-        for (body in formats) {
-            val req = Request.Builder()
-                .url(BASE_URL + API_TOKEN)
-                .post(RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body))
-                .build()
-
-            val respBody = try {
-                val r = http.newCall(req).execute()
-                val b = r.body?.string()?.trim() ?: ""
-                Log.d(TAG, "HTTP ${r.code}, resp=${b.take(300)}")
-                if (b.isEmpty()) continue
-                b
-            } catch (e: IOException) {
-                Log.e(TAG, "网络错误", e)
-                continue
-            }
-
-            // 步骤4-5: 解密 → 解析
-            val (json, code) = parseResponse(respBody)
-            if (code == 200) return json to code
-            // 100/106/107 可能是格式不对，继续尝试下一种
-            if (code == 100 || code == 106 || code == 107) continue
-            return json to code
+        val respBody = try {
+            val r = http.newCall(req).execute()
+            val b = r.body?.string()?.trim() ?: ""
+            Log.d(TAG, "HTTP ${r.code}, resp=${b.take(300)}")
+            if (b.isEmpty()) return JSONObject() to -1
+            b
+        } catch (e: IOException) {
+            Log.e(TAG, "网络错误", e)
+            return JSONObject() to -1
         }
-        return JSONObject("""{"code":-1,"msg":"API不存在"}""") to -1
+
+        // 步骤4-5: 解密 → 解析
+        return parseResponse(respBody)
     }
 
     private fun parseResponse(respBody: String): Pair<JSONObject, Int> {
-        // 先试明文JSON
+        // 先试明文 JSON
         try {
             val json = JSONObject(respBody)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
-        // 再试Base64解密
+        // 再试 Base64 解密
         try {
             val plaintext = b64d(respBody)
             val json = JSONObject(plaintext)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
-        // 无法解析，返回错误
         return JSONObject() to -1
     }
 
