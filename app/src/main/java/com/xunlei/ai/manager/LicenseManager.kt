@@ -22,9 +22,9 @@ class LicenseManager private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LicenseManager"
 
-        private const val API_ID = "GHy4KpmX"                                // 调用ID
+        private const val API_ID = "2zzEzZET"                                // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                     // 程序秘钥
-        private const val API_TOKEN = "1c80e20f259ddf742794197103bac9ef"   // 请求令牌
+        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"   // 请求令牌
         private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
