@@ -199,19 +199,27 @@ class LicenseManager private constructor(private val context: Context) {
             if (respBody.isEmpty()) {
                 JSONObject("""{"code":-1,"msg":"服务器返回空 (HTTP ${r.code})"}""") to -1
             } else {
-                // 解密响应
+                // 先尝试明文 JSON，失败再 Base64 解密
                 val plaintext = try {
-                    customDecode(respBody)
+                    JSONObject(respBody) // 尝试解析，成功说明是明文
+                    respBody // 不真的解析，直接返回原文
                 } catch (_: Exception) {
-                    // 可能服务器返回明文
-                    respBody
+                    try {
+                        customDecode(respBody)
+                    } catch (_: Exception) {
+                        respBody
+                    }
                 }
-                Log.d(TAG, "解密后: $plaintext")
-                try {
-                    val json = JSONObject(plaintext)
-                    json to json.optInt("code", -1)
-                } catch (_: Exception) {
-                    JSONObject("""{"code":-1,"msg":"解析失败: $plaintext"}""") to -1
+                if (plaintext === respBody && respBody.length > 200) {
+                    // 明文但太长，截断显示
+                    JSONObject("""{"code":-1,"msg":"解析失败: ${respBody.take(100)}..."}""") to -1
+                } else {
+                    try {
+                        val json = JSONObject(plaintext)
+                        json to json.optInt("code", -1)
+                    } catch (_: Exception) {
+                        JSONObject("""{"code":-1,"msg":"解析失败: ${plaintext.take(80)}"}""") to -1
+                    }
                 }
             }
         } catch (e: IOException) {
