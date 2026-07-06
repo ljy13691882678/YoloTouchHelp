@@ -134,23 +134,23 @@ class LicenseManager private constructor(private val context: Context) {
         // Base64加密
         val encrypted = base64Encode(raw)
 
-        // DATA变量[V1]开启 → data=加密值
-        // 同时尝试直接发送（兼容不同配置）
-        val formats = listOf(
-            "data=$encrypted" to "application/x-www-form-urlencoded",
-            encrypted to "text/plain",
-        )
+        // 格式A: data=Base64 (DATA变量V1开启)
+        // 格式B: 直接Base64 (文档标准)
+        // 全部使用 text/plain 避免 URL 编码破坏 Base64
+        val formats = listOf("data=$encrypted", encrypted)
 
-        for ((body, contentType) in formats) {
-            val resp = tryPost(body, contentType)
+        for (body in formats) {
+            val resp = tryPost(body, "text/plain")
             if (resp == null) continue
 
             val (json, code) = tryParse(resp)
-            if (code == 200 || code in 100..199) {
+            if (code == 200) {
                 Log.d(TAG, "$label success: code=$code")
                 return json to code
             }
-            if (code == 106 || code == 107) continue
+            // 100/106/107 可能是格式不对，继续尝试下一种
+            if (code == 100 || code == 106 || code == 107) continue
+            // 其他错误直接返回（卡密不存在等）
             return json to code
         }
         return JSONObject("""{"code":-1,"msg":"所有格式均失败"}""") to -1
@@ -162,10 +162,10 @@ class LicenseManager private constructor(private val context: Context) {
         return try {
             val r = http.newCall(req).execute()
             val resp = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code} [$contentType], resp[0:200]=${resp.take(200)}")
+            Log.d(TAG, "HTTP ${r.code}, resp[0:200]=${resp.take(200)}")
             if (resp.isEmpty()) null else resp
         } catch (e: IOException) {
-            Log.e(TAG, "网络错误 [$contentType]", e)
+            Log.e(TAG, "网络错误", e)
             null
         }
     }
