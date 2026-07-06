@@ -30,10 +30,10 @@ class LicenseManager private constructor(private val context: Context) {
         private const val TAG = "LicenseManager"
 
         // ========== llua.cn 后台参数 ==========
-        private const val API_ID = "57549"              // 调用ID
-        private const val API_KEY = "EFzFiRY7O3fazBRs"  // 程序秘钥
-        private const val API_TOKEN = "CRaM54xWs2DxDPC"  // 请求令牌
-        private const val ENC_KEY = "CRaM54xWs2DxDPC"    // 加密密钥
+        private const val API_ID = "57549"                            // 调用ID
+        private const val API_KEY = "EFzFiRY7O3fazBRs"                // 程序秘钥
+        private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f" // 请求令牌
+        private const val ENC_KEY = "CRaM54xWs2DxDPC"                  // 加密密钥
         private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
