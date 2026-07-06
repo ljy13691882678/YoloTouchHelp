@@ -85,7 +85,7 @@ TfLiteDelegate* QnnEngine::buildDelegate() {
     TfLiteQnnDelegateOptions qnn_options = TfLiteQnnDelegateOptionsDefault();
     qnn_options.backend_type = kHtpBackend;
     qnn_options.skel_library_dir = m_native_lib_dir;
-    qnn_options.cache_dir = "/data/data/com.yolotouchhelp.aimbot/cache/qnn";
+    qnn_options.cache_dir = "/data/data/com.xunlei.ai/cache/qnn";
     qnn_options.model_token = "yolov8n_htp_v1";
 
     m_delegate = TfLiteQnnDelegateCreate(&qnn_options);

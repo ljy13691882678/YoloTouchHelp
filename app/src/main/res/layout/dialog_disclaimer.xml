@@ -51,7 +51,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="本软件（YoloTouchHelp Android）是一款基于 AI 目标检测技术的辅助工具，仅供学习、研究和技术交流之用。本软件并非为任何特定游戏设计，也不鼓励或支持在任何在线游戏中使用以获取不正当优势。"
+        android:text="本软件（迅雷AI Android）是一款基于 AI 目标检测技术的辅助工具，仅供学习、研究和技术交流之用。本软件并非为任何特定游戏设计，也不鼓励或支持在任何在线游戏中使用以获取不正当优势。"
         android:textSize="14sp"
         android:textColor="?attr/colorOnSurface"
         android:layout_marginTop="8dp"

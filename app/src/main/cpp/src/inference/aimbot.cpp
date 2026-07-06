@@ -20,7 +20,7 @@ static int g_input_height = 256;
 //==============================================================================
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_init(JNIEnv* env, jobject, jstring model_path) {
+Java_com_xunlei_ai_inference_JniCallBack_init(JNIEnv* env, jobject, jstring model_path) {
     const char* path = env->GetStringUTFChars(model_path, nullptr);
     LOGD("init: %s", path);
 
@@ -68,7 +68,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_init(JNIEnv* env, jobject, j
 //==============================================================================
 extern "C"
 JNIEXPORT jfloatArray JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_detect(
+Java_com_xunlei_ai_inference_JniCallBack_detect(
     JNIEnv* env, jobject,
     jobject buffer,
     jint offsetX, jint offsetY,
@@ -116,7 +116,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_detect(
 //==============================================================================
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setConfidence(JNIEnv*, jobject, jfloat threshold) {
+Java_com_xunlei_ai_inference_JniCallBack_setConfidence(JNIEnv*, jobject, jfloat threshold) {
     g_confidence = threshold;
     if (g_engine) g_engine->setConfidence(threshold);
     LOGD("Confidence: %.2f", threshold);
@@ -124,7 +124,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setConfidence(JNIEnv*, jobje
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setForceCpu(JNIEnv*, jobject, jboolean useCpu) {
+Java_com_xunlei_ai_inference_JniCallBack_setForceCpu(JNIEnv*, jobject, jboolean useCpu) {
     g_force_cpu = useCpu;
     if (g_engine) g_engine->setForceCpu(useCpu);
     LOGD("Force CPU: %s", useCpu ? "ON" : "OFF");
@@ -132,7 +132,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setForceCpu(JNIEnv*, jobject
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setCpuThreads(JNIEnv*, jobject, jint threads) {
+Java_com_xunlei_ai_inference_JniCallBack_setCpuThreads(JNIEnv*, jobject, jint threads) {
     g_cpu_threads = threads;
     if (g_engine) g_engine->setCpuThreads(threads);
     LOGD("CPU threads: %d", threads);
@@ -140,7 +140,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setCpuThreads(JNIEnv*, jobje
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setInputSize(JNIEnv*, jobject, jint width, jint height) {
+Java_com_xunlei_ai_inference_JniCallBack_setInputSize(JNIEnv*, jobject, jint width, jint height) {
     g_input_width = width;
     g_input_height = height;
     if (g_engine) g_engine->setInputSize(width, height);
@@ -152,7 +152,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_setInputSize(JNIEnv*, jobjec
 //==============================================================================
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_getBackend(JNIEnv* env, jobject) {
+Java_com_xunlei_ai_inference_JniCallBack_getBackend(JNIEnv* env, jobject) {
     if (g_engine) return env->NewStringUTF(g_engine->getBackendType().c_str());
     return env->NewStringUTF("none");
 }
@@ -162,7 +162,7 @@ Java_com_yolotouchhelp_aimbot_inference_JniCallBack_getBackend(JNIEnv* env, jobj
 //==============================================================================
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_inference_JniCallBack_release(JNIEnv*, jobject) {
+Java_com_xunlei_ai_inference_JniCallBack_release(JNIEnv*, jobject) {
     if (g_engine) {
         g_engine->release();
         g_engine.reset();

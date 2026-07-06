@@ -14,7 +14,7 @@ static int g_screen_h = 0;
 
 // ═════════════════════════════════════════════════════════════════════
 //  JNI Interface
-//  Package: com.yolotouchhelp.aimbot.service.RemoteInjectorService
+//  Package: com.xunlei.ai.service.RemoteInjectorService
 // ═════════════════════════════════════════════════════════════════════
 
 extern "C" {
@@ -22,11 +22,11 @@ extern "C" {
 // ─── Configuration ──────────────────────────────────────────────────
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_setDeviceResolution(
+Java_com_xunlei_ai_service_RemoteInjectorService_setDeviceResolution(
     JNIEnv*, jclass, jint, jint) {}
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_setScreenResolution(
+Java_com_xunlei_ai_service_RemoteInjectorService_setScreenResolution(
     JNIEnv*, jclass, jint screenW, jint screenH)
 {
     if (screenW > 0 && screenH > 0) {
@@ -37,7 +37,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_setScreenResolution(
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_setScreenRotation(
+Java_com_xunlei_ai_service_RemoteInjectorService_setScreenRotation(
     JNIEnv*, jclass, jint rotation)
 {
     touch_set_screen_params(g_screen_w, g_screen_h, rotation);
@@ -47,7 +47,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_setScreenRotation(
 // ─── Lifecycle ──────────────────────────────────────────────────────
 
 JNIEXPORT jint JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_openUinputNative(
+Java_com_xunlei_ai_service_RemoteInjectorService_openUinputNative(
     JNIEnv*, jobject)
 {
     if (touch_init(g_screen_w, g_screen_h))
@@ -56,21 +56,21 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_openUinputNative(
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_closeUinputNative(
+Java_com_xunlei_ai_service_RemoteInjectorService_closeUinputNative(
     JNIEnv*, jobject)
 {
     touch_close();
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_startGeteventListenerNative(
+Java_com_xunlei_ai_service_RemoteInjectorService_startGeteventListenerNative(
     JNIEnv*, jobject)
 {
     touch_start_readers();
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_stopGeteventListenerNative(
+Java_com_xunlei_ai_service_RemoteInjectorService_stopGeteventListenerNative(
     JNIEnv*, jobject)
 {
     touch_stop_readers();
@@ -79,7 +79,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_stopGeteventListener
 // ─── Virtual touch (aim) — uses TOUCH_VIRTUAL_SLOT on device 0 ──────
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendDown(
+Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendDown(
     JNIEnv*, jobject, jint, jint x, jint y, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
@@ -88,7 +88,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendDown(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendMove(
+Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendMove(
     JNIEnv*, jobject, jint, jint x, jint y, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
@@ -97,7 +97,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendMove(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendUp(
+Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendUp(
     JNIEnv*, jobject, jint, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
@@ -108,7 +108,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputSendUp(
 // ─── Trigger touch — uses TOUCH_TRIGGER_SLOT on device 0 ────────────
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputTriggerDown(
+Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerDown(
     JNIEnv*, jobject, jint x, jint y)
 {
     if (!touch_is_initialized()) return;
@@ -116,7 +116,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputTriggerDown(
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputTriggerUp(
+Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerUp(
     JNIEnv*, jobject)
 {
     if (!touch_is_initialized()) return;
@@ -126,7 +126,7 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_uinputTriggerUp(
 // ─── Zone configuration ────────────────────────────────────────────
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetTriggerZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeSetTriggerZone(
     JNIEnv*, jclass, jint l, jint t, jint r, jint b)
 {
     touch_set_trigger_zone(l, t, r, b);
@@ -134,14 +134,14 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetTriggerZone
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeIsFingerInTriggerZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeIsFingerInTriggerZone(
     JNIEnv*, jclass)
 {
     return touch_is_finger_in_trigger_zone() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetAdsZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeSetAdsZone(
     JNIEnv*, jclass, jint l, jint t, jint r, jint b)
 {
     touch_set_ads_zone(l, t, r, b);
@@ -149,14 +149,14 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetAdsZone(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeIsFingerInAdsZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeIsFingerInAdsZone(
     JNIEnv*, jclass)
 {
     return touch_is_finger_in_ads_zone() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetFireZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeSetFireZone(
     JNIEnv*, jclass, jint l, jint t, jint r, jint b)
 {
     touch_set_fire_zone(l, t, r, b);
@@ -164,14 +164,14 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetFireZone(
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeIsFingerInFireZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeIsFingerInFireZone(
     JNIEnv*, jclass)
 {
     return touch_is_finger_in_fire_zone() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetJoystickZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeSetJoystickZone(
     JNIEnv*, jclass, jint l, jint t, jint r, jint b)
 {
     touch_set_joystick_zone(l, t, r, b);
@@ -179,14 +179,14 @@ Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeSetJoystickZon
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeIsFingerInJoystickZone(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeIsFingerInJoystickZone(
     JNIEnv*, jclass)
 {
     return touch_is_finger_in_joystick_zone() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_yolotouchhelp_aimbot_service_RemoteInjectorService_nativeLiftJoystickFinger(
+Java_com_xunlei_ai_service_RemoteInjectorService_nativeLiftJoystickFinger(
     JNIEnv*, jclass)
 {
     return touch_lift_joystick_finger() ? JNI_TRUE : JNI_FALSE;

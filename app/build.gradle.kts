@@ -4,14 +4,14 @@ plugins {
 }
 
 android {
-    namespace = "com.yolotouchhelp.aimbot"
+    namespace = "com.xunlei.ai"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.yolotouchhelp.aimbot"
+        applicationId = "com.xunlei.ai"
         minSdk = 31
         targetSdk = 35
-        versionCode = 11
+        versionCode = 12
         versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

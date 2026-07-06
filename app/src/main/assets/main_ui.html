@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>YoloTouchHelp</title>
+    <title>XunleiAI</title>
     <style>
         :root {
             color-scheme: light;
@@ -364,7 +364,7 @@
 <body>
 <div class="shell">
     <header class="header">
-        <div class="header-title" id="pageTitle">YoloTouchHelp</div>
+        <div class="header-title" id="pageTitle">迅雷AI</div>
         <div class="header-actions">
             <button class="icon-btn" type="button" onclick="invokeNative('openDeviceInfo')" aria-label="设备信息">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -495,8 +495,8 @@
     };
 
     function invokeNative(method) {
-        if (window.YoloTouchHelpApp && typeof window.YoloTouchHelpApp[method] === "function") {
-            window.YoloTouchHelpApp[method]();
+        if (window.XunleiAIApp && typeof window.XunleiAIApp[method] === "function") {
+            window.XunleiAIApp[method]();
         }
     }
 
@@ -514,10 +514,10 @@
         document.getElementById("settingsPage").classList.toggle("active", !homeActive);
         document.getElementById("tabHome").classList.toggle("active", homeActive);
         document.getElementById("tabSettings").classList.toggle("active", !homeActive);
-        setText("pageTitle", homeActive ? "YoloTouchHelp" : "设置");
+        setText("pageTitle", homeActive ? "迅雷AI" : "设置");
     }
 
-    window.YoloTouchHelpUi = {
+    window.XunleiAIUi = {
         render(raw) {
             const data = JSON.parse(raw);
             setText("statusText", data.statusText);
@@ -548,8 +548,8 @@
     };
 
     document.addEventListener("DOMContentLoaded", function () {
-        if (window.YoloTouchHelpApp && typeof window.YoloTouchHelpApp.onPageReady === "function") {
-            window.YoloTouchHelpApp.onPageReady();
+        if (window.XunleiAIApp && typeof window.XunleiAIApp.onPageReady === "function") {
+            window.XunleiAIApp.onPageReady();
         }
     });
 </script>
