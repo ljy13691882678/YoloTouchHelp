@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
- * 加密: RC4加密-2 (hex)
+ * 加密: BASE64加密 (标准)
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -25,7 +25,6 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "GHy4KpmX"                                // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                     // 程序秘钥
         private const val API_TOKEN = "1c80e20f259ddf742794197103bac9ef"   // 请求令牌
-        private const val RC4_KEY = "WyCAhR5dFPSEsrY"                      // RC4加密密钥
         private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -62,39 +61,11 @@ class LicenseManager private constructor(private val context: Context) {
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    // ==================== RC4 加密/解密 ====================
+    private fun base64Encode(data: String) = android.util.Base64.encodeToString(
+        data.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
 
-    private fun rc4(key: ByteArray, data: ByteArray): ByteArray {
-        val s = IntArray(256) { it }
-        var j = 0
-        for (i in 0..255) {
-            j = (j + s[i] + (key[i % key.size].toInt() and 0xFF)) and 0xFF
-            val tmp = s[i]; s[i] = s[j]; s[j] = tmp
-        }
-        val out = ByteArray(data.size)
-        var i = 0; j = 0
-        for (k in data.indices) {
-            i = (i + 1) and 0xFF
-            j = (j + s[i]) and 0xFF
-            val tmp = s[i]; s[i] = s[j]; s[j] = tmp
-            out[k] = (data[k].toInt() xor s[(s[i] + s[j]) and 0xFF]).toByte()
-        }
-        return out
-    }
-
-    /** RC4加密 → hex小写 (GBK编码) */
-    private fun encrypt(plaintext: String): String =
-        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(java.nio.charset.Charset.forName("GBK")))
-            .joinToString("") { "%02x".format(it) }
-
-    /** RC4解密: hex → RC4 → 明文 (GBK解码) */
-    private fun decrypt(hexStr: String): String {
-        val bytes = ByteArray(hexStr.length / 2)
-        for (i in bytes.indices) {
-            bytes[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-        }
-        return String(rc4(RC4_KEY.toByteArray(), bytes), java.nio.charset.Charset.forName("GBK"))
-    }
+    private fun base64Decode(data: String) = String(
+        android.util.Base64.decode(data, android.util.Base64.NO_WRAP), Charsets.UTF_8)
 
     // ==================== 卡密登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
@@ -160,8 +131,8 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 请求 ====================
 
     private fun doRequest(raw: String, label: String): Pair<JSONObject, Int> {
-        // RC4加密 → hex
-        val encrypted = encrypt(raw)
+        // Base64加密
+        val encrypted = base64Encode(raw)
 
         // DATA变量[V1]开启 → data=加密值
         // 同时尝试直接发送（兼容不同配置）
@@ -200,7 +171,7 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     /**
-     * 解析响应: 先试明文JSON → 再试RC4 hex解密
+     * 解析响应: 先试明文JSON → 再试Base64解密
      */
     private fun tryParse(respBody: String): Pair<JSONObject, Int> {
         // 先试明文 JSON
@@ -209,9 +180,9 @@ class LicenseManager private constructor(private val context: Context) {
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
-        // 再试 RC4 hex 解密
+        // 再试 Base64 解密
         try {
-            val plaintext = decrypt(respBody)
+            val plaintext = base64Decode(respBody)
             val json = JSONObject(plaintext)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
