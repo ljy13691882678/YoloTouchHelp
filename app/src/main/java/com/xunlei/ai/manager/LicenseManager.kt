@@ -14,7 +14,15 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * 微验 llua.cn 网络验证管理器
+ * 微验 llua.cn 网络验证管理器 V2
+ *
+ * 接口文档: https://app.llua.cn/setapi/v2/help/
+ *
+ * 参数说明:
+ *   API_ID     = 调用ID (后台"应用ID"列)
+ *   API_KEY    = 程序秘钥 (后台"应用秘钥"列)
+ *   API_TOKEN  = 请求令牌 (后台"请求令牌"列，用于URL路径)
+ *   ENC_KEY    = 加密密钥 (后台"安全配置"→"加密密钥")
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -22,13 +30,10 @@ class LicenseManager private constructor(private val context: Context) {
         private const val TAG = "LicenseManager"
 
         // ========== llua.cn 后台参数 ==========
-        // 应用ID 用于 URL 路径: /v2/{应用ID}
-        // 请求令牌 用于 POST 参数 id=
-        private const val API_ID = "73520"
-        private const val API_KEY = "xxMMRwPF191cHFYc"
-        private const val API_TOKEN = "aHT47DxEd55RM7K"
-        // 加密密钥 (后台"安全配置"中的"加密密钥")
-        private const val ENC_KEY = "aHT47DxEd55RM7K"
+        private const val API_ID = "73520"            // 调用ID
+        private const val API_KEY = "xxMMRwPF191cHFYc" // 程序秘钥
+        private const val API_TOKEN = "aHT47DxEd55RM7K" // 请求令牌
+        private const val ENC_KEY = "aHT47DxEd55RM7K"   // 加密密钥
         private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -63,7 +68,8 @@ class LicenseManager private constructor(private val context: Context) {
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
 
-    // ---------- 激活 ----------
+    // ==================== 卡密登录 ====================
+    // 文档: sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + APPKEY)
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         try {
             val mark = deviceId()
@@ -72,47 +78,29 @@ class LicenseManager private constructor(private val context: Context) {
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
 
-            // 尝试两种请求格式，直到成功
-            var lastError: JSONObject? = null
-            val formats = listOf(
-                // 方式1: 明文（后台可能未开启加密，或加密配置不生效）
-                raw,
-                // 方式2: RC4 hex 加密
-                crypto.encrypt(raw, ENC_KEY),
-                // 方式3: data=加密值
-                "data=" + crypto.encrypt(raw, ENC_KEY)
-            )
-            for (body in formats) {
-                val resp = post(body)
-                if (resp.isFailure) continue
-                val json = parseResponse(resp.getOrThrow().trim())
-                val code = json.optInt("code", -1)
-                if (code == 200) {
-                    val msg = json.getJSONObject("msg")
-                    prefs.edit().apply {
-                        putString(K_KAMI, kami)
-                        putString(K_TOKEN, msg.getString("token"))
-                        putLong(K_EXPIRE, msg.optLong("vip", 0))
-                        putBoolean(K_ACTIVE, true)
-                        putString(K_KM_TYPE, msg.optString("kmtype", "day"))
-                    }.apply()
-                    Log.i(TAG, "激活成功 (格式: ${formats.indexOf(body)})")
-                    startHeartbeat()
-                    return@withContext Result.success(json)
-                }
-                lastError = json
-                // 只有 code 100(应用不存在) 或 106(签名错误) 才尝试下一种格式
-                if (code != 100 && code != 106) break
+            val result = tryAllFormats(raw)
+            if (result.isSuccess) {
+                val json = result.getOrThrow()
+                val msg = json.getJSONObject("msg")
+                prefs.edit().apply {
+                    putString(K_KAMI, kami)
+                    putString(K_TOKEN, msg.getString("token"))
+                    putLong(K_EXPIRE, msg.optLong("vip", 0))
+                    putBoolean(K_ACTIVE, true)
+                    putString(K_KM_TYPE, msg.optString("kmtype", "day"))
+                }.apply()
+                Log.i(TAG, "激活成功")
+                startHeartbeat()
             }
-            val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
-            Result.failure(LicenseException(err.optInt("code", -1), errMsg(err)))
+            result
         } catch (e: Exception) {
             Log.e(TAG, "激活异常", e)
             Result.failure(e)
         }
     }
 
-    // ---------- 心跳 ----------
+    // ==================== 心跳验证 ====================
+    // 文档: sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&kamitoken=" + token + "&" + APPKEY)
     suspend fun heartbeat(): Result<JSONObject> = withContext(Dispatchers.IO) {
         try {
             val kami = prefs.getString(K_KAMI, "") ?: ""
@@ -125,37 +113,59 @@ class LicenseManager private constructor(private val context: Context) {
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts", "&kamitoken=$token")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
 
-            val formats = listOf(raw, crypto.encrypt(raw, ENC_KEY), "data=" + crypto.encrypt(raw, ENC_KEY))
-            var lastError: JSONObject? = null
-            for (body in formats) {
-                val resp = post(body)
-                if (resp.isFailure) continue
-                val json = parseResponse(resp.getOrThrow().trim())
-                val code = json.optInt("code", -1)
-                if (code == 200) {
-                    val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
-                    prefs.edit().putLong(K_EXPIRE, et).apply()
-                    return@withContext Result.success(json)
+            val result = tryAllFormats(raw)
+            result.onSuccess { json ->
+                val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
+                prefs.edit().putLong(K_EXPIRE, et).apply()
+            }
+            result.onFailure { e ->
+                val ex = e as? LicenseException ?: return@onFailure
+                if (ex.code == 152 || ex.code == 153) {
+                    prefs.edit().putBoolean(K_ACTIVE, false).apply()
+                    stopHeartbeat()
                 }
-                lastError = json
-                if (code != 100 && code != 106) break
             }
-            val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
-            val ex = LicenseException(err.optInt("code", -1), errMsg(err))
-            if (ex.code == 152 || ex.code == 153) {
-                prefs.edit().putBoolean(K_ACTIVE, false).apply()
-                stopHeartbeat()
-            }
-            Result.failure(ex)
+            result
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
+    // ==================== 请求/响应处理 ====================
+
+    /**
+     * 尝试 3 种格式发送请求: 明文 → RC4加密 → data=加密值
+     * 直到 code=200 或遇到非(100/106)的错误
+     */
+    private suspend fun tryAllFormats(raw: String): Result<JSONObject> {
+        val formats = listOf(
+            raw,                                    // 明文
+            crypto.encrypt(raw, ENC_KEY),            // RC4 hex
+            "data=" + crypto.encrypt(raw, ENC_KEY)   // data=加密值 (V1 DATA变量)
+        )
+        var lastError: JSONObject? = null
+        for ((i, body) in formats.withIndex()) {
+            val resp = post(body)
+            if (resp.isFailure) continue
+            val json = parseResponse(resp.getOrThrow().trim())
+            val code = json.optInt("code", -1)
+            if (code == 200) {
+                Log.d(TAG, "请求成功，格式索引: $i")
+                return Result.success(json)
+            }
+            lastError = json
+            if (code != 100 && code != 106) break
+        }
+        val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
+        return Result.failure(LicenseException(err.optInt("code", -1), errMsg(err)))
+    }
+
+    /**
+     * POST 请求，URL = BASE_URL + 请求令牌
+     */
     private fun post(data: String): Result<String> {
         val body = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), data)
-        // URL: /v2/{应用ID}
-        val req = Request.Builder().url(BASE_URL + API_ID).post(body).build()
+        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(body).build()
         return try {
             val r = http.newCall(req).execute()
             if (r.isSuccessful) Result.success(r.body?.string() ?: "")
@@ -164,13 +174,13 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     /**
-     * 解析服务器响应: 先尝试直接解析 JSON，失败则 hex 解密后解析
+     * 解析响应: 先尝试明文JSON，失败则 hex→RC4 解密
      */
     private fun parseResponse(body: String): JSONObject {
         return try {
             JSONObject(body)
         } catch (_: Exception) {
-            Log.d(TAG, "服务器返回非明文 JSON，尝试 hex 解密")
+            Log.d(TAG, "响应非明文 JSON，尝试 hex 解密")
             JSONObject(crypto.decrypt(body, ENC_KEY))
         }
     }
