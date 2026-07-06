@@ -70,14 +70,25 @@ class AimController(
     private var predictedVelocityY = 0f
 
     private fun isRecoilActive(): Boolean {
-        val client = touchClient() ?: return false
-        return if (aimHoldEnabled) client.isFingerInTriggerZone() else false
+        // FIX: 不再返回 true 来每帧叠加后坐力
+        //      改为由 bumpRecoil() 一次性脉冲触发
+        return false
+    }
+
+    private var recoilAccumulated = 0f
+    private val recoilDecay = 0.55f  // 每帧衰减系数，约5帧归零
+
+    fun bumpRecoil() {
+        if (!recoilEnabled) return
+        recoilAccumulated = (recoilAccumulated + recoilStrength.coerceIn(0f, 30f)).coerceIn(0f, 50f)
     }
 
     private fun currentRecoilOffset(): Float {
         if (!recoilEnabled) return 0f
-        if (!isRecoilActive()) return 0f
-        return recoilStrength.coerceIn(0f, 80f)
+        if (recoilAccumulated <= 0.5f) { recoilAccumulated = 0f; return 0f }
+        val offset = recoilAccumulated
+        recoilAccumulated *= recoilDecay
+        return offset
     }
 
     fun selectTarget(dets: List<DetectionInfo>, cx: Float, cy: Float): AimSolution? {
@@ -350,10 +361,14 @@ class AimController(
     }
 
     fun executeAiming(targetX: Float, targetY: Float, cx: Float, cy: Float) {
+        // FIX: 当触摸已按下时，用实际触控位置计算误差
+        //      否则永远用屏幕中心，PID 的 error 永不变化导致积分溢出外跳
+        val actualCx = if (aimingState.pointerDown) aimingState.centerX else cx
+        val actualCy = if (aimingState.pointerDown) aimingState.centerY else cy
         if (aimMode == 1) {
-            executeAimingBezier(targetX, targetY, cx, cy)
+            executeAimingBezier(targetX, targetY, actualCx, actualCy)
         } else {
-            executeAimingPid(targetX, targetY, cx, cy)
+            executeAimingPid(targetX, targetY, actualCx, actualCy)
         }
     }
 
@@ -385,10 +400,9 @@ class AimController(
             if (Math.abs(errorX) < convergeThresh && Math.abs(errorY) < convergeThresh) {
                 aimingState.lastMoveX = 0f
                 aimingState.lastMoveY = 0f
-                // 有commit时不释放，打完再抬
-                if (!hasActiveCommitment() && aimingState.pointerDown && aimingState.deadzoneFrames++ >= deadzoneHoldFrames.coerceIn(0, 30)) {
-                    releaseAimPointer()
-                }
+                // FIX: 收敛时保持触控不动，不释放指针
+                //      始终同触点平滑拉枪，避免 lift+swipe 的间断
+                if (aimingState.pointerDown) aimingState.deadzoneFrames = 0
                 return
             }
             aimingState.deadzoneFrames = 0
@@ -443,16 +457,9 @@ class AimController(
             if (Math.abs(errorX) < convergeThresh && Math.abs(errorY) < convergeThresh) {
                 aimingState.lastMoveX = 0f
                 aimingState.lastMoveY = 0f
-                // ====== 关键修复：有commit时不释放，打完一个目标再切下一个 ======
-                if (hasActiveCommitment()) {
-                    // 有commit目标，收敛了也不抬手指，保持在目标上
-                    aimingState.deadzoneFrames = 0
-                    return
-                }
-                if (aimingState.pointerDown && aimingState.deadzoneFrames++ >= deadzoneHoldFrames.coerceIn(0, 30)) {
-                    releaseAimPointer()
-                    Log.d(TAG, "aim converged error=($errorX, $errorY)")
-                }
+                // FIX: 收敛时保持触控不动，不释放指针
+                //      始终同触点平滑拉枪，避免 lift+swipe 的间断
+                if (aimingState.pointerDown) aimingState.deadzoneFrames = 0
                 return
             }
             aimingState.deadzoneFrames = 0

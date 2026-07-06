@@ -51,6 +51,7 @@ class TriggerController(
     private var triggerAreaY = 0
     private var lastTriggerMs = 0L
     var triggerFired = false
+    var onFire: (() -> Unit)? = null  // FIX: 后坐力脉冲回调
 
     val mainHandler = Handler(Looper.getMainLooper())
 
@@ -103,6 +104,7 @@ class TriggerController(
     }
 
     fun fireTriggerTap() {
+        onFire?.invoke()  // FIX: 通知 AimController 生成后坐力脉冲
         val fireArea = savedAreas().getOrNull(AREA_INDEX_FIRE)
         if (fireArea != null) {
             val rndX = fireArea.x + (Math.random() * fireArea.width).toInt()
