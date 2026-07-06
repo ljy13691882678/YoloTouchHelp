@@ -153,20 +153,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ConfigManager.init(this)
 
-        // ========== 微验网络验证：全屏激活页 ==========
+        // ========== 微验网络验证：每次启动都显示全屏激活页 ==========
         LicenseManager.init(this)
-        val state = LicenseManager.get().checkState()
-        if (state == LicenseManager.State.UNACTIVATED || state == LicenseManager.State.EXPIRED) {
-            setContentView(R.layout.activity_activation)
-            setupActivationUI()
-            return
-        }
-        if (state == LicenseManager.State.ACTIVE) {
-            LicenseManager.get().startHeartbeat()
-            Log.d("MainActivity", "许可证有效: ${LicenseManager.get().remainingFormatted()}")
-        }
-
-        initMainUI()
+        setContentView(R.layout.activity_activation)
+        setupActivationUI()
     }
 
     private fun initMainUI() {
@@ -207,10 +197,8 @@ class MainActivity : AppCompatActivity() {
         val tvStatus = findViewById<TextView>(R.id.tv_activation_status)
         val tvInfo = findViewById<TextView>(R.id.tv_activation_info)
 
-        // 如果之前已到期，显示提示
-        if (LicenseManager.get().checkState() == LicenseManager.State.EXPIRED) {
-            tvInfo.text = "卡密已到期，请重新激活"
-        }
+        // 不再需要到期提示
+        tvInfo.text = ""
 
         btnActivate.setOnClickListener {
             val kami = etKami.text.toString().trim()
@@ -228,8 +216,8 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     pb.visibility = View.GONE
                     if (result.isSuccess) {
-                        LicenseManager.get().startHeartbeat()
-                        tvStatus.text = "激活成功！剩余：${LicenseManager.get().remainingFormatted()}"
+                        LicenseManager.get().clear() // 不保留本地状态，下次启动重新验证
+                        tvStatus.text = "激活成功！"
                         tvStatus.setTextColor(0xFF4CAF50.toInt())
                         // 延迟切换到主页面
                         android.os.Handler(mainLooper).postDelayed({
