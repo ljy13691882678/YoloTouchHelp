@@ -44,6 +44,7 @@ import com.xunlei.ai.R
 import com.xunlei.ai.inference.JniCallBack
 import com.xunlei.ai.manager.ConfigManager
 import com.xunlei.ai.manager.LicenseManager
+import com.xunlei.ai.manager.LicenseException
 import com.xunlei.ai.service.FloatService
 import com.xunlei.ai.util.ProjectionHolder
 import com.xunlei.ai.util.ReleaseInfo
