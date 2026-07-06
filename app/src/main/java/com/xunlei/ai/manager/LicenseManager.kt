@@ -15,14 +15,15 @@ import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
- * 微验 llua.cn 网络验证管理器 V2
+ * 微验 llua.cn 网络验证管理器
  *
- * 逐行翻译官方示例伪代码:
- *   host = "http://wy.llua.cn/v2/"
- *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
- *   post_data = Base64加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
- *   response_data = POST请求(host + apitoken, post_data)
- *   result = Base64解密(response_data)
+ * 按 AIDE 官方示例重写:
+ *   URL = BASE_URL + "/api/?id=kmlogon&app=" + API_ID
+ *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + API_KEY)
+ *   data = RC4加密("kami=" + 卡密 + "&markcode=" + ... + "&sign=" + sign + "&value=" + 随机数)
+ *   body = "data=" + data
+ *   response = UrlPost(URL, body)
+ *   result = RC4解密(response)
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -30,10 +31,9 @@ class LicenseManager private constructor(private val context: Context) {
         private const val TAG = "LicenseManager"
 
         // ========== 后台参数 ==========
-        private const val API_ID = "2zzEzZET"                                // 调用ID
-        private const val API_KEY = "SpJRY4QXptZSa2Q"                       // 程序秘钥
-        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"    // 请求令牌
-        private const val BASE_URL = "http://wy.llua.cn/v2/"
+        private const val API_ID = "2zzEzZET"
+        private const val API_KEY = "SpJRY4QXptZSa2Q"
+        private const val BASE_URL = "http://wy.llua.cn"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
@@ -66,34 +66,29 @@ class LicenseManager private constructor(private val context: Context) {
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun b64e(s: String) = Base64.encodeToString(
-        s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-
-    private fun b64d(s: String) = String(
-        Base64.decode(s, Base64.NO_WRAP), Charsets.UTF_8)
-
-    // ==================== 步骤1: 计算签名 ====================
-    private fun signLogin(kami: String, mark: String, ts: String) =
-        md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
-
-    private fun signHeartbeat(kami: String, mark: String, ts: String, token: String) =
-        md5("kami=$kami&markcode=$mark&t=$ts&kamitoken=$token&$API_KEY")
-
     // ==================== 单码登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         try {
             val mark = deviceId()
-            val ts = (System.currentTimeMillis() / 1000).toString()
-            val valStr = (10000000..99999999).random().toString()
-            val sign = signLogin(kami, mark, ts)
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
+            val ts = System.currentTimeMillis().toString()
+            val value = (1 + Math.random() * 10 + System.currentTimeMillis().toDouble()).toString()
+            // 签名: md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + API_KEY)
+            val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
 
-            val (json, code) = apiCall(raw)
+            // 加密: data=Base64("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&sign=" + sign + "&value=" + 随机数)
+            val raw = "kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$value"
+            val data = b64e(raw)
+            val body = "data=$data"
+
+            val json = apiPost("/api/?id=kmlogon&app=$API_ID", body)
+            val code = json.optInt("code", -1)
+            Log.d(TAG, "激活响应: code=$code")
+
             if (code == 200) {
                 val msg = json.getJSONObject("msg")
                 prefs.edit().apply {
                     putString(K_KAMI, kami)
-                    putString(K_TOKEN, msg.getString("token"))
+                    putString(K_TOKEN, msg.optString("token", ""))
                     putLong(K_EXPIRE, msg.optLong("vip", 0))
                     putBoolean(K_ACTIVE, true)
                     putString(K_KM_TYPE, msg.optString("kmtype", "day"))
@@ -109,21 +104,25 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     // ==================== 心跳验证 ====================
+    // V1 API 心跳: 使用相同的登录接口
     suspend fun heartbeat(): Result<JSONObject> = withContext(Dispatchers.IO) {
         try {
             val kami = prefs.getString(K_KAMI, "") ?: ""
-            val token = prefs.getString(K_TOKEN, "") ?: ""
-            if (kami.isEmpty() || token.isEmpty()) return@withContext Result.failure(IOException("未激活"))
+            if (kami.isEmpty()) return@withContext Result.failure(IOException("未激活"))
 
             val mark = deviceId()
-            val ts = (System.currentTimeMillis() / 1000).toString()
-            val valStr = (10000000..99999999).random().toString()
-            val sign = signHeartbeat(kami, mark, ts, token)
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
+            val ts = System.currentTimeMillis().toString()
+            val value = (1 + Math.random() * 10 + System.currentTimeMillis().toDouble()).toString()
+            val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
+            val raw = "kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$value"
+            val data = b64e(raw)
+            val body = "data=$data"
 
-            val (json, code) = apiCall(raw)
+            val json = apiPost("/api/?id=kmlogon&app=$API_ID", body)
+            val code = json.optInt("code", -1)
+
             if (code == 200) {
-                prefs.edit().putLong(K_EXPIRE, json.getJSONObject("msg").optLong("endtime", 0)).apply()
+                prefs.edit().putLong(K_EXPIRE, json.getJSONObject("msg").optLong("vip", 0)).apply()
                 Result.success(json)
             } else {
                 val ex = LicenseException(code, errMsg(json))
@@ -135,48 +134,36 @@ class LicenseManager private constructor(private val context: Context) {
         }
     }
 
-    // ==================== 步骤2-5: 加密 → 发送 → 解密 → 解析 ====================
+    // ==================== POST 请求（按 AIDE 示例） ====================
 
-    private fun apiCall(raw: String): Pair<JSONObject, Int> {
-        // 步骤2: post_data = Base64加密(...)
-        // V2 API 直接发送加密字符串，无 data= 前缀，text/plain
-        val postData = b64e(raw)
+    private fun b64e(s: String) = Base64.encodeToString(
+        s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
+    private fun b64d(s: String) = String(
+        Base64.decode(s, Base64.NO_WRAP), Charsets.UTF_8)
+
+    private fun apiPost(path: String, body: String): JSONObject {
+        // 按 AIDE 示例: outputStream.write(byteString.getBytes())
+        // 默认 Content-Type = application/x-www-form-urlencoded
         val req = Request.Builder()
-            .url(BASE_URL + API_TOKEN)
-            .post(RequestBody.create("text/plain".toMediaType(), postData))
+            .url(BASE_URL + path)
+            .post(RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body))
             .build()
 
-        val respBody = try {
+        return try {
             val r = http.newCall(req).execute()
-            val b = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, resp=${b.take(300)}")
-            if (b.isEmpty()) return JSONObject() to -1
-            b
+            val respBody = r.body?.string()?.trim() ?: ""
+            Log.d(TAG, "HTTP ${r.code}, resp=${respBody.take(300)}")
+            if (respBody.isEmpty()) return JSONObject()
+
+            // 先试明文JSON → 再试Base64解密
+            try { return JSONObject(respBody) } catch (_: Exception) { }
+            try { return JSONObject(b64d(respBody)) } catch (_: Exception) { }
+            JSONObject()
         } catch (e: IOException) {
             Log.e(TAG, "网络错误", e)
-            return JSONObject() to -1
+            JSONObject()
         }
-
-        // 步骤4-5: 解密 → 解析
-        return parseResponse(respBody)
-    }
-
-    private fun parseResponse(respBody: String): Pair<JSONObject, Int> {
-        // 先试明文 JSON
-        try {
-            val json = JSONObject(respBody)
-            return json to json.optInt("code", -1)
-        } catch (_: Exception) { }
-
-        // 再试 Base64 解密
-        try {
-            val plaintext = b64d(respBody)
-            val json = JSONObject(plaintext)
-            return json to json.optInt("code", -1)
-        } catch (_: Exception) { }
-
-        return JSONObject() to -1
     }
 
     private fun errMsg(json: JSONObject) = when (json.optInt("code", -1)) {
