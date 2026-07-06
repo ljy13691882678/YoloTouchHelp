@@ -944,7 +944,7 @@ class FloatService : Service() {
 
     private fun removeAreaSettingsView() {
         if (areaSettingsAdded) {
-            areaSettingsView?.animate()?.alpha(0f)?.scaleX(0.85f)?.scaleY(0.85f)?.setDuration(150)
+            areaSettingsView?.animate()?.alpha(0f)?.setDuration(150)
                 ?.withEndAction {
                     areaSettingsView?.visibility = View.GONE
                 }?.start()

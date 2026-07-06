@@ -469,6 +469,8 @@ class AreaSettingsView(context: Context) : View(context) {
         state = State.OPEN
         visibility = View.VISIBLE
         alpha = 0f
+        scaleX = 1f
+        scaleY = 1f
         animate().alpha(1f).setDuration(200).start()
         invalidate()
     }
