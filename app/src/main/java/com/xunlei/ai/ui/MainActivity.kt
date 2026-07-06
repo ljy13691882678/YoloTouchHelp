@@ -22,9 +22,11 @@ import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -32,6 +34,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import rikka.shizuku.Shizuku
@@ -40,7 +45,6 @@ import com.xunlei.ai.inference.JniCallBack
 import com.xunlei.ai.manager.ConfigManager
 import com.xunlei.ai.manager.LicenseManager
 import com.xunlei.ai.service.FloatService
-import com.xunlei.ai.ui.dialog.ActivationDialog
 import com.xunlei.ai.util.ProjectionHolder
 import com.xunlei.ai.util.ReleaseInfo
 import com.xunlei.ai.util.UpdateChecker
@@ -148,25 +152,23 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         ConfigManager.init(this)
 
-        // ========== 微验网络验证 ==========
+        // ========== 微验网络验证：全屏激活页 ==========
         LicenseManager.init(this)
-        when (LicenseManager.get().checkState()) {
-            LicenseManager.State.UNACTIVATED, LicenseManager.State.EXPIRED -> {
-                loadModelsFromJson()
-                setContentView(R.layout.activity_main)
-                bindViews()
-                setupWebView()
-                // 延迟弹窗，确保 Activity 完全初始化后再显示
-                window.decorView.post { showActivationDialog() }
-                return
-            }
-            LicenseManager.State.ACTIVE -> {
-                LicenseManager.get().startHeartbeat()
-                Log.d("MainActivity", "许可证有效: ${LicenseManager.get().remainingFormatted()}")
-            }
-            else -> {}  // 兜底，确保 when 完整
+        val state = LicenseManager.get().checkState()
+        if (state == LicenseManager.State.UNACTIVATED || state == LicenseManager.State.EXPIRED) {
+            setContentView(R.layout.activity_activation)
+            setupActivationUI()
+            return
+        }
+        if (state == LicenseManager.State.ACTIVE) {
+            LicenseManager.get().startHeartbeat()
+            Log.d("MainActivity", "许可证有效: ${LicenseManager.get().remainingFormatted()}")
         }
 
+        initMainUI()
+    }
+
+    private fun initMainUI() {
         loadModelsFromJson()
 
         val cfgModelIndex = ConfigManager.getConfig().modelIndex
@@ -194,6 +196,56 @@ class MainActivity : AppCompatActivity() {
             showDisclaimerDialog()
         } else {
             initAfterDisclaimer()
+        }
+    }
+
+    private fun setupActivationUI() {
+        val etKami = findViewById<EditText>(R.id.et_activation_kami)
+        val btnActivate = findViewById<Button>(R.id.btn_activation_activate)
+        val pb = findViewById<ProgressBar>(R.id.pb_activation)
+        val tvStatus = findViewById<TextView>(R.id.tv_activation_status)
+        val tvInfo = findViewById<TextView>(R.id.tv_activation_info)
+
+        // 如果之前已到期，显示提示
+        if (LicenseManager.get().checkState() == LicenseManager.State.EXPIRED) {
+            tvInfo.text = "卡密已到期，请重新激活"
+        }
+
+        btnActivate.setOnClickListener {
+            val kami = etKami.text.toString().trim()
+            if (kami.length < 4) {
+                tvStatus.text = "请输入正确的卡密"
+                return@setOnClickListener
+            }
+            tvStatus.text = "正在激活..."
+            pb.visibility = View.VISIBLE
+            btnActivate.isEnabled = false
+            etKami.isEnabled = false
+
+            CoroutineScope(Dispatchers.IO).launch {
+                val result = LicenseManager.get().activate(kami)
+                runOnUiThread {
+                    pb.visibility = View.GONE
+                    if (result.isSuccess) {
+                        LicenseManager.get().startHeartbeat()
+                        tvStatus.text = "激活成功！剩余：${LicenseManager.get().remainingFormatted()}"
+                        tvStatus.setTextColor(0xFF4CAF50.toInt())
+                        // 延迟切换到主页面
+                        android.os.Handler(mainLooper).postDelayed({
+                            initMainUI()
+                        }, 800)
+                    } else {
+                        val err = when (val e = result.exceptionOrNull()) {
+                            is LicenseException -> e.message ?: "失败(${e.code})"
+                            else -> e?.message ?: "网络错误"
+                        }
+                        tvStatus.text = err
+                        tvStatus.setTextColor(0xFFFF6B6B.toInt())
+                        btnActivate.isEnabled = true
+                        etKami.isEnabled = true
+                    }
+                }
+            }
         }
     }
 
@@ -279,16 +331,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
         webView.loadUrl("file:///android_asset/main_ui.html")
-    }
-
-    private fun showActivationDialog() {
-        ActivationDialog(this, LicenseManager.get()) {
-            runOnUiThread {
-                Log.d("MainActivity", "激活成功，继续启动")
-                if (!isDisclaimerAccepted()) showDisclaimerDialog()
-                else initAfterDisclaimer()
-            }
-        }.show()
     }
 
     private fun initAfterDisclaimer() {

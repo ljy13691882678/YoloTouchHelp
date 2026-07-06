@@ -1,14 +1,13 @@
 package com.xunlei.ai.util
 
-import android.util.Base64
 import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
  * 微验 llua.cn API V2 加密解密工具
  *
+ * 加密: RC4(key=加密密钥) → hex 小写输出
  * 签名: MD5(参数拼接 + APPKEY)
- * 加密: RC4(key=APPKEY) → Base64
  */
 class LluaCrypto(private val appKey: String) {
 
@@ -25,18 +24,28 @@ class LluaCrypto(private val appKey: String) {
         return md5(sb.toString())
     }
 
-    fun encrypt(plaintext: String, keyStr: String): String {
-        val key = (keyStr + appKey).toByteArray()
+    /**
+     * RC4 加密，hex 小写输出
+     * @param plaintext 明文
+     * @param encryptKey 加密密钥 (来自后台"加密密钥"，非APPKEY)
+     */
+    fun encrypt(plaintext: String, encryptKey: String): String {
+        val key = encryptKey.toByteArray()
         val data = plaintext.toByteArray(Charsets.UTF_8)
         val encrypted = rc4(key, data)
-        return Base64.encodeToString(encrypted, Base64.NO_WRAP)
+        return encrypted.joinToString("") { "%02x".format(it) }
     }
 
-    fun decrypt(ciphertext: String, keyStr: String): String {
-        val key = (keyStr + appKey).toByteArray()
-        val decoded = Base64.decode(ciphertext, Base64.NO_WRAP)
-        val decrypted = rc4(key, decoded)
-        return String(decrypted, Charsets.UTF_8)
+    /**
+     * RC4 解密，hex 输入
+     */
+    fun decrypt(hexStr: String, encryptKey: String): String {
+        val key = encryptKey.toByteArray()
+        val bytes = ByteArray(hexStr.length / 2)
+        for (i in bytes.indices) {
+            bytes[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+        return String(rc4(key, bytes), Charsets.UTF_8)
     }
 
     fun randomValue(): String = SecureRandom().nextInt(100000000).toString()

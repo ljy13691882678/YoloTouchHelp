@@ -15,11 +15,6 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器
- *
- * 在 llua.cn 后台创建应用后获取:
- *   APP_ID     = 调用ID
- *   APP_KEY    = 程序秘钥
- *   API_TOKEN  = 请求令牌
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -30,6 +25,8 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "73520"
         private const val API_KEY = "xxMMRwPF191cHFYc"
         private const val API_TOKEN = "aHT47DxEd55RM7K"
+        // 加密密钥 (后台"安全配置"中的"加密密钥")
+        private const val ENC_KEY = "aHT47DxEd55RM7K"
         private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -72,12 +69,18 @@ class LicenseManager private constructor(private val context: Context) {
             val valStr = crypto.randomValue()
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
-            val enc = crypto.encrypt(raw, ts)
+            // RC4 hex 加密，key=加密密钥
+            val enc = crypto.encrypt(raw, ENC_KEY)
+            // 后台开启"提交参数放DATA变量"，格式: data=加密值
+            val body = "data=$enc"
 
-            val resp = post(enc)
+            val resp = post(body)
             if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
 
-            val json = JSONObject(crypto.decrypt(resp.getOrThrow(), ts))
+            // 解密响应: hex → RC4 → 明文
+            val decrypted = crypto.decrypt(resp.getOrThrow().trim(), ENC_KEY)
+            Log.d(TAG, "激活响应解密: $decrypted")
+            val json = JSONObject(decrypted)
             val code = json.optInt("code", -1)
             if (code == 200) {
                 val msg = json.getJSONObject("msg")
@@ -112,12 +115,14 @@ class LicenseManager private constructor(private val context: Context) {
             val valStr = crypto.randomValue()
             val sign = crypto.calculateSign("kami=$kami", "&markcode=$mark", "&t=$ts", "&kamitoken=$token")
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
-            val enc = crypto.encrypt(raw, ts)
+            val enc = crypto.encrypt(raw, ENC_KEY)
+            val body = "data=$enc"
 
-            val resp = post(enc)
+            val resp = post(body)
             if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
 
-            val json = JSONObject(crypto.decrypt(resp.getOrThrow(), ts))
+            val decrypted = crypto.decrypt(resp.getOrThrow().trim(), ENC_KEY)
+            val json = JSONObject(decrypted)
             if (json.optInt("code", -1) == 200) {
                 val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
                 prefs.edit().putLong(K_EXPIRE, et).apply()
@@ -189,9 +194,7 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     fun stopHeartbeat() { hbJob?.cancel(); hbJob = null }
-
     fun clear() { stopHeartbeat(); prefs.edit().clear().apply() }
-
     fun destroy() { stopHeartbeat(); scope.cancel() }
 }
 

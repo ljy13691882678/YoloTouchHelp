@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121212"
+    android:gravity="center"
+    android:padding="32dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingBottom="48dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="迅雷AI"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:textColor="#6750A4"
+            android:paddingBottom="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="网络验证"
+            android:textSize="16sp"
+            android:textColor="#888888"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/bg_dialog"
+        android:padding="28dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="请输入激活卡密"
+            android:textSize="16sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:paddingBottom="20dp"/>
+
+        <EditText
+            android:id="@+id/et_activation_kami"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:hint="输入卡密"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#555555"
+            android:textSize="16sp"
+            android:inputType="text"
+            android:maxLines="1"
+            android:background="@drawable/bg_edit"
+            android:paddingHorizontal="16dp"/>
+
+        <ProgressBar
+            android:id="@+id/pb_activation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"/>
+
+        <TextView
+            android:id="@+id/tv_activation_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="14sp"
+            android:textColor="#FF6B6B"
+            android:gravity="center"
+            android:paddingTop="12dp"
+            android:paddingBottom="8dp"/>
+
+        <Button
+            android:id="@+id/btn_activation_activate"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:text="激活"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:background="@drawable/bg_btn_activate"/>
+
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_activation_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="13sp"
+        android:textColor="#4CAF50"
+        android:gravity="center"
+        android:paddingTop="24dp"/>
+
+</LinearLayout>
