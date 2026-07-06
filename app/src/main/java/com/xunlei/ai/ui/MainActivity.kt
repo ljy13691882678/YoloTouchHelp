@@ -43,8 +43,7 @@ import rikka.shizuku.Shizuku
 import com.xunlei.ai.R
 import com.xunlei.ai.inference.JniCallBack
 import com.xunlei.ai.manager.ConfigManager
-import com.xunlei.ai.manager.LicenseManager
-import com.xunlei.ai.manager.LicenseException
+import com.xunlei.ai.manager.T3Verify
 import com.xunlei.ai.service.FloatService
 import com.xunlei.ai.util.ProjectionHolder
 import com.xunlei.ai.util.ReleaseInfo
@@ -148,13 +147,27 @@ class MainActivity : AppCompatActivity() {
     private var deviceInfoDialog: HtmlDialogHandle? = null
     private var updateDialog: HtmlDialogHandle? = null
     private var currentReleaseInfo: ReleaseInfo? = null
+    private lateinit var t3Verify: T3Verify
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ConfigManager.init(this)
 
-        // ========== 微验网络验证：每次启动都显示全屏激活页 ==========
-        LicenseManager.init(this)
+        // ========== T3 网络验证：每次启动都显示全屏激活页 ==========
+        t3Verify = T3Verify()
+        t3Verify.initRsa(
+            "364BB9C878698A91",           // 单码登录调用码
+            "4AD6AF47E16C2641",           // 公告调用码
+            "6DEFFB0C83B0113C",           // 版本号调用码
+            "6653C56842BB614E",           // 心跳调用码
+            "7b16d44d7af6f7762052a2ebe3020584", // APPKEY
+            "-----BEGIN PUBLIC KEY-----\n" +
+            "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDG3yB/EAOXtsULJ23t6A9DssiQ\n" +
+            "ouGqB5bQ/eDGbYV0t+j2yc2lQxmwySewJY2OYQtYFzq5vQQELje7sUiKcmdYHbzl\n" +
+            "1QLlwmKhMrVeujmJqrJn7J4mSJ7DsdRfsfQ9qd0R0xH3F7L+zaXPxNg39JEMsrAl\n" +
+            "x/Zwzk0HpkTQP+k14wIDAQAB\n" +
+            "-----END PUBLIC KEY-----"
+        )
         setContentView(R.layout.activity_activation)
         setupActivationUI()
     }
@@ -197,7 +210,6 @@ class MainActivity : AppCompatActivity() {
         val tvStatus = findViewById<TextView>(R.id.tv_activation_status)
         val tvInfo = findViewById<TextView>(R.id.tv_activation_info)
 
-        // 不再需要到期提示
         tvInfo.text = ""
 
         btnActivate.setOnClickListener {
@@ -211,30 +223,25 @@ class MainActivity : AppCompatActivity() {
             btnActivate.isEnabled = false
             etKami.isEnabled = false
 
-            CoroutineScope(Dispatchers.IO).launch {
-                val result = LicenseManager.get().activate(kami)
+            Thread {
+                val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                val result = t3Verify.login(kami, deviceId)
                 runOnUiThread {
                     pb.visibility = View.GONE
-                    if (result.isSuccess) {
-                        LicenseManager.get().clear() // 不保留本地状态，下次启动重新验证
-                        tvStatus.text = "激活成功！"
+                    if (result.success) {
+                        tvStatus.text = "激活成功！到期: ${result.endTime}"
                         tvStatus.setTextColor(0xFF4CAF50.toInt())
-                        // 延迟切换到主页面
                         android.os.Handler(mainLooper).postDelayed({
                             initMainUI()
                         }, 800)
                     } else {
-                        val err = when (val e = result.exceptionOrNull()) {
-                            is LicenseException -> e.message ?: "失败(${e.code})"
-                            else -> e?.message ?: "网络错误"
-                        }
-                        tvStatus.text = err
+                        tvStatus.text = result.error ?: "激活失败"
                         tvStatus.setTextColor(0xFFFF6B6B.toInt())
                         btnActivate.isEnabled = true
                         etKami.isEnabled = true
                     }
                 }
-            }
+            }.start()
         }
     }
 
