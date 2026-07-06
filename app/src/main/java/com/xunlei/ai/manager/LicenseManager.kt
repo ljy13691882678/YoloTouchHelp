@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
-import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -18,7 +17,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
- * 加密: DES加密 (ECB, PKCS5Padding) → Base64
+ * 加密: DES加密 (ECB, PKCS5Padding) → hex
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -67,14 +66,16 @@ class LicenseManager private constructor(private val context: Context) {
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    /** DES加密 → Base64 */
+    /** DES加密 → hex */
     private fun desEncrypt(s: String): String = synchronized(encCipher) {
-        Base64.encodeToString(encCipher.doFinal(s.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        encCipher.doFinal(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
     }
 
-    /** Base64 → DES解密 */
-    private fun desDecrypt(s: String): String = synchronized(decCipher) {
-        String(decCipher.doFinal(Base64.decode(s, Base64.NO_WRAP)), Charsets.UTF_8)
+    /** hex → DES解密 */
+    private fun desDecrypt(hex: String): String = synchronized(decCipher) {
+        val bytes = ByteArray(hex.length / 2)
+        for (i in bytes.indices) bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        String(decCipher.doFinal(bytes), Charsets.UTF_8)
     }
 
     // ==================== 单码登录 ====================
@@ -136,7 +137,7 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 请求 ====================
 
     private fun doRequest(raw: String): Pair<JSONObject, Int> {
-        // DES加密 → Base64 → data=值
+        // DES加密 → hex → data=值
         val encrypted = desEncrypt(raw)
         val postData = "data=$encrypted"
 
@@ -155,7 +156,7 @@ class LicenseManager private constructor(private val context: Context) {
             return JSONObject("""{"code":-1,"msg":"网络错误: ${e.message}"}""") to -1
         }
 
-        // 先试明文JSON → 再试Base64+DES解密
+        // 先试明文JSON → 再试DES hex解密
         try {
             val json = JSONObject(respBody)
             val code = json.optInt("code", -1)
