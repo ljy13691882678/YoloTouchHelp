@@ -22,6 +22,8 @@ class LicenseManager private constructor(private val context: Context) {
         private const val TAG = "LicenseManager"
 
         // ========== llua.cn 后台参数 ==========
+        // 应用ID 用于 URL 路径: /v2/{应用ID}
+        // 请求令牌 用于 POST 参数 id=
         private const val API_ID = "73520"
         private const val API_KEY = "xxMMRwPF191cHFYc"
         private const val API_TOKEN = "aHT47DxEd55RM7K"
@@ -152,7 +154,8 @@ class LicenseManager private constructor(private val context: Context) {
 
     private fun post(data: String): Result<String> {
         val body = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), data)
-        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(body).build()
+        // URL: /v2/{应用ID}
+        val req = Request.Builder().url(BASE_URL + API_ID).post(body).build()
         return try {
             val r = http.newCall(req).execute()
             if (r.isSuccessful) Result.success(r.body?.string() ?: "")
