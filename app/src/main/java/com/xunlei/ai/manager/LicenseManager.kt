@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -15,16 +16,23 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
- * 加密: BASE64加密 (标准)
+ *
+ * 严格逐行翻译官方文档伪代码:
+ *   host = "https://wy.llua.cn/v2/"
+ *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
+ *   post_data = 自定义算法加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
+ *   response_data = POST请求(host + apitoken, post_data)
+ *   result = 自定义算法解密(response_data)
+ *   jsonData = JSON解析(result)
  */
 class LicenseManager private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "LicenseManager"
 
-        private const val API_ID = "2zzEzZET"                                // 调用ID
-        private const val API_KEY = "EFzFiRY7O3fazBRs"                     // 程序秘钥
-        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"   // 请求令牌
+        private const val API_ID = "2zzEzZET"
+        private const val API_KEY = "EFzFiRY7O3fazBRs"
+        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"
         private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -37,43 +45,41 @@ class LicenseManager private constructor(private val context: Context) {
         private const val HB_MS = 30_000L
 
         @Volatile private var inst: LicenseManager? = null
-
-        fun init(ctx: Context): LicenseManager = inst ?: synchronized(this) {
+        fun init(ctx: Context) = synchronized(this) {
             inst ?: LicenseManager(ctx.applicationContext).also { inst = it }
         }
-        fun get(): LicenseManager = inst!!
+        fun get() = inst!!
     }
 
     enum class State { UNACTIVATED, ACTIVE, EXPIRED }
 
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val http = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+        .connectTimeout(10, TimeUnit.SECONDS).readTimeout(10, TimeUnit.SECONDS).build()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var hbJob: Job? = null
 
-    private fun deviceId(): String =
+    private fun deviceId() =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
 
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun base64Encode(data: String) = android.util.Base64.encodeToString(
-        data.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+    private fun b64e(s: String) = Base64.encodeToString(
+        s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    private fun b64d(s: String) = String(
+        Base64.decode(s, Base64.NO_WRAP), Charsets.UTF_8)
 
-    private fun base64Decode(data: String) = String(
-        android.util.Base64.decode(data, android.util.Base64.NO_WRAP), Charsets.UTF_8)
-
-    // ==================== 卡密登录 ====================
+    // ==================== 单码登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
         try {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
+            // 步骤1: sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
             val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
+            // 步骤2: post_data = Base64加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
 
             val (json, code) = doRequest(raw, "激活")
@@ -92,7 +98,6 @@ class LicenseManager private constructor(private val context: Context) {
                 Result.failure(LicenseException(code, errMsg(json)))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "激活异常", e)
             Result.failure(e)
         }
     }
@@ -112,15 +117,11 @@ class LicenseManager private constructor(private val context: Context) {
 
             val (json, code) = doRequest(raw, "心跳")
             if (code == 200) {
-                val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
-                prefs.edit().putLong(K_EXPIRE, et).apply()
+                prefs.edit().putLong(K_EXPIRE, json.getJSONObject("msg").optLong("endtime", 0)).apply()
                 Result.success(json)
             } else {
                 val ex = LicenseException(code, errMsg(json))
-                if (code == 152 || code == 153) {
-                    prefs.edit().putBoolean(K_ACTIVE, false).apply()
-                    stopHeartbeat()
-                }
+                if (code == 152 || code == 153) { prefs.edit().putBoolean(K_ACTIVE, false).apply(); stopHeartbeat() }
                 Result.failure(ex)
             }
         } catch (e: Exception) {
@@ -128,61 +129,39 @@ class LicenseManager private constructor(private val context: Context) {
         }
     }
 
-    // ==================== 请求 ====================
+    // ==================== 请求（文档步骤 3+4+5） ====================
 
     private fun doRequest(raw: String, label: String): Pair<JSONObject, Int> {
-        // Base64加密
-        val encrypted = base64Encode(raw)
+        // 步骤2: post_data = Base64加密(...)
+        val postData = b64e(raw)
 
-        // 格式A: data=Base64 (DATA变量V1开启)
-        // 格式B: 直接Base64 (文档标准)
-        // 全部使用 text/plain 避免 URL 编码破坏 Base64
-        val formats = listOf("data=$encrypted", encrypted)
+        // 步骤3: response_data = POST请求(host + apitoken, post_data)
+        // 文档直接发送加密字符串，不包 data= 前缀
+        val req = Request.Builder()
+            .url(BASE_URL + API_TOKEN)
+            .post(RequestBody.create("text/plain".toMediaType(), postData))
+            .build()
 
-        for (body in formats) {
-            val resp = tryPost(body, "text/plain")
-            if (resp == null) continue
-
-            val (json, code) = tryParse(resp)
-            if (code == 200) {
-                Log.d(TAG, "$label success: code=$code")
-                return json to code
-            }
-            // 100/106/107 可能是格式不对，继续尝试下一种
-            if (code == 100 || code == 106 || code == 107) continue
-            // 其他错误直接返回（卡密不存在等）
-            return json to code
-        }
-        return JSONObject("""{"code":-1,"msg":"所有格式均失败"}""") to -1
-    }
-
-    private fun tryPost(body: String, contentType: String): String? {
-        val reqBody = RequestBody.create(contentType.toMediaType(), body)
-        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(reqBody).build()
-        return try {
+        val respBody = try {
             val r = http.newCall(req).execute()
-            val resp = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, resp[0:200]=${resp.take(200)}")
-            if (resp.isEmpty()) null else resp
+            val body = r.body?.string()?.trim() ?: ""
+            Log.d(TAG, "HTTP ${r.code}, resp[0:200]=${body.take(200)}")
+            if (body.isEmpty()) return JSONObject("""{"code":-1,"msg":"服务器返回空"}""") to -1
+            body
         } catch (e: IOException) {
-            Log.e(TAG, "网络错误", e)
-            null
+            return JSONObject("""{"code":-1,"msg":"网络错误: ${e.message}"}""") to -1
         }
-    }
 
-    /**
-     * 解析响应: 先试明文JSON → 再试Base64解密
-     */
-    private fun tryParse(respBody: String): Pair<JSONObject, Int> {
-        // 先试明文 JSON
+        // 步骤4+5: result = Base64解密 → JSON解析
+        // 先试明文JSON（服务器可能不加密响应），再试Base64解密
         try {
             val json = JSONObject(respBody)
-            return json to json.optInt("code", -1)
+            val code = json.optInt("code", -1)
+            if (code != -1) return json to code
         } catch (_: Exception) { }
 
-        // 再试 Base64 解密
         try {
-            val plaintext = base64Decode(respBody)
+            val plaintext = b64d(respBody)
             val json = JSONObject(plaintext)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
@@ -191,48 +170,32 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     private fun errMsg(json: JSONObject): String = when (json.optInt("code", -1)) {
-        100 -> "未绑定应用ID";  102 -> "应用已关闭";  104 -> "签名为空"
-        105 -> "数据过期";      106 -> "签名错误";    107 -> "数据为空"
-        108 -> "未提交时间";    112 -> "未提交设备码"; 148 -> "卡密为空"
-        149 -> "卡密不存在";    150 -> "卡密已使用";  152 -> "卡密已到期"
-        153 -> "卡密被禁用";    else -> json.optString("msg", "未知错误")
+        100 -> "API不存在";  102 -> "应用已关闭";  104 -> "签名为空"
+        105 -> "数据过期";   106 -> "签名错误";    107 -> "数据为空"
+        108 -> "未提交时间"; 112 -> "未提交设备码"; 148 -> "卡密为空"
+        149 -> "卡密不存在"; 150 -> "卡密已使用";  152 -> "卡密已到期"
+        153 -> "卡密被禁用"; else -> json.optString("msg", "未知错误")
     }
 
-    // ---------- 状态查询 ----------
     fun checkState(): State {
         if (!prefs.getBoolean(K_ACTIVE, false)) return State.UNACTIVATED
         val exp = prefs.getLong(K_EXPIRE, 0)
         if (exp == 0L) return State.UNACTIVATED
-        if (System.currentTimeMillis() / 1000 >= exp) {
-            prefs.edit().putBoolean(K_ACTIVE, false).apply()
-            return State.EXPIRED
-        }
+        if (System.currentTimeMillis() / 1000 >= exp) { prefs.edit().putBoolean(K_ACTIVE, false).apply(); return State.EXPIRED }
         return State.ACTIVE
     }
 
-    fun remainingSeconds(): Long = (prefs.getLong(K_EXPIRE, 0) - System.currentTimeMillis() / 1000).coerceAtLeast(0)
-
+    fun remainingSeconds() = (prefs.getLong(K_EXPIRE, 0) - System.currentTimeMillis() / 1000).coerceAtLeast(0)
     fun remainingFormatted(): String {
         val s = remainingSeconds()
         if (s <= 0) return "已到期"
         val d = s / 86400; val h = (s % 86400) / 3600; val m = (s % 3600) / 60
-        return buildString {
-            if (d > 0) append("${d}天")
-            if (h > 0) append("${h}小时")
-            append("${m}分钟")
-        }
+        return buildString { if (d > 0) append("${d}天"); if (h > 0) append("${h}小时"); append("${m}分钟") }
     }
-
     fun getKmType() = prefs.getString(K_KM_TYPE, "day") ?: "day"
     fun getKami() = prefs.getString(K_KAMI, "") ?: ""
 
-    fun startHeartbeat() {
-        stopHeartbeat()
-        hbJob = scope.launch {
-            while (isActive) { delay(HB_MS); heartbeat() }
-        }
-    }
-
+    fun startHeartbeat() { stopHeartbeat(); hbJob = scope.launch { while (isActive) { delay(HB_MS); heartbeat() } } }
     fun stopHeartbeat() { hbJob?.cancel(); hbJob = null }
     fun clear() { stopHeartbeat(); prefs.edit().clear().apply() }
     fun destroy() { stopHeartbeat(); scope.cancel() }
