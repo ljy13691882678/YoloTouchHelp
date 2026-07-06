@@ -71,6 +71,8 @@ class MainActivity : AppCompatActivity() {
         private const val USER_MODELS_FILE = "user_models.json"
         private const val IMPORTED_MODELS_DIR = "imported_models"
         private const val REQ_SHIZUKU = 10001
+        private const val PREF_T3 = "t3_verify"
+        private const val KEY_KAMI = "saved_kami"
         const val ACTION_STATE_CHANGE = "com.xunlei.ai.STATE_CHANGE"
         const val EXTRA_STATE = "state"
         const val EXTRA_MODEL_NAME = "model_name"
@@ -210,6 +212,13 @@ class MainActivity : AppCompatActivity() {
         val tvStatus = findViewById<TextView>(R.id.tv_activation_status)
         val tvInfo = findViewById<TextView>(R.id.tv_activation_info)
 
+        // 预填上次使用的卡密
+        val savedKami = getSharedPreferences(PREF_T3, Context.MODE_PRIVATE).getString(KEY_KAMI, null)
+        if (!savedKami.isNullOrEmpty()) {
+            etKami.setText(savedKami)
+            etKami.setSelection(savedKami.length)
+        }
+
         tvInfo.text = ""
 
         btnActivate.setOnClickListener {
@@ -229,6 +238,11 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     pb.visibility = View.GONE
                     if (result.success) {
+                        // 保存卡密，下次自动填入
+                        getSharedPreferences(PREF_T3, Context.MODE_PRIVATE).edit()
+                            .putString(KEY_KAMI, kami).apply()
+                        // 激活后跳过免责声明
+                        setDisclaimerAccepted()
                         tvStatus.text = "激活成功！到期: ${result.endTime}"
                         tvStatus.setTextColor(0xFF4CAF50.toInt())
                         android.os.Handler(mainLooper).postDelayed({
