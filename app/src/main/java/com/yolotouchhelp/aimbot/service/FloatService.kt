@@ -936,9 +936,8 @@ class FloatService : Service() {
         if (areaSettingsAdded) {
             if (guiVisible) hideGui()
             areaSettingsView?.apply {
-                visibility = View.VISIBLE; alpha = 0f; scaleX = 0.85f; scaleY = 0.85f
                 setAreas(this@FloatService.savedAreas)
-                animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start()
+                open()
             }
         }
     }
