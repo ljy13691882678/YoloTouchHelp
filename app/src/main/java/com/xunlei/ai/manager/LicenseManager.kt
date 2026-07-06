@@ -77,10 +77,7 @@ class LicenseManager private constructor(private val context: Context) {
             val resp = post(body)
             if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
 
-            // 解密响应: hex → RC4 → 明文
-            val decrypted = crypto.decrypt(resp.getOrThrow().trim(), ENC_KEY)
-            Log.d(TAG, "激活响应解密: $decrypted")
-            val json = JSONObject(decrypted)
+            val json = parseResponse(resp.getOrThrow().trim())
             val code = json.optInt("code", -1)
             if (code == 200) {
                 val msg = json.getJSONObject("msg")
@@ -121,8 +118,7 @@ class LicenseManager private constructor(private val context: Context) {
             val resp = post(body)
             if (resp.isFailure) return@withContext Result.failure(resp.exceptionOrNull()!!)
 
-            val decrypted = crypto.decrypt(resp.getOrThrow().trim(), ENC_KEY)
-            val json = JSONObject(decrypted)
+            val json = parseResponse(resp.getOrThrow().trim())
             if (json.optInt("code", -1) == 200) {
                 val et = json.getJSONObject("msg").optLong("endtime", prefs.getLong(K_EXPIRE, 0))
                 prefs.edit().putLong(K_EXPIRE, et).apply()
@@ -148,6 +144,18 @@ class LicenseManager private constructor(private val context: Context) {
             if (r.isSuccessful) Result.success(r.body?.string() ?: "")
             else Result.failure(IOException("HTTP ${r.code}"))
         } catch (e: IOException) { Result.failure(e) }
+    }
+
+    /**
+     * 解析服务器响应: 先尝试直接解析 JSON，失败则 hex 解密后解析
+     */
+    private fun parseResponse(body: String): JSONObject {
+        return try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            Log.d(TAG, "服务器返回非明文 JSON，尝试 hex 解密")
+            JSONObject(crypto.decrypt(body, ENC_KEY))
+        }
     }
 
     private fun errMsg(json: JSONObject): String = when (json.optInt("code", -1)) {
