@@ -33,7 +33,7 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "2zzEzZET"
         private const val API_KEY = "EFzFiRY7O3fazBRs"
         private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"
-        private const val BASE_URL = "http://wy.llua.cn/v2/"
+        private const val BASE_URL = "http://lvy.liua.cn/v2/"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
