@@ -38,7 +38,9 @@ import rikka.shizuku.Shizuku
 import com.yolotouchhelp.aimbot.R
 import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.manager.ConfigManager
+import com.yolotouchhelp.aimbot.manager.LicenseManager
 import com.yolotouchhelp.aimbot.service.FloatService
+import com.yolotouchhelp.aimbot.ui.dialog.ActivationDialog
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 import com.yolotouchhelp.aimbot.util.ReleaseInfo
 import com.yolotouchhelp.aimbot.util.UpdateChecker
@@ -145,6 +147,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ConfigManager.init(this)
+
+        // ========== 微验网络验证 ==========
+        LicenseManager.init(this)
+        when (LicenseManager.get().checkState()) {
+            LicenseManager.State.UNACTIVATED, LicenseManager.State.EXPIRED -> {
+                loadModelsFromJson()
+                setContentView(R.layout.activity_main)
+                bindViews()
+                setupWebView()
+                showActivationDialog()
+                return
+            }
+            LicenseManager.State.ACTIVE -> {
+                LicenseManager.get().startHeartbeat()
+                Log.d(TAG, "许可证有效: ${LicenseManager.get().remainingFormatted()}")
+            }
+        }
+
         loadModelsFromJson()
 
         val cfgModelIndex = ConfigManager.getConfig().modelIndex
@@ -257,6 +277,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
         webView.loadUrl("file:///android_asset/main_ui.html")
+    }
+
+    private fun showActivationDialog() {
+        ActivationDialog(this, LicenseManager.get()) {
+            runOnUiThread {
+                Log.d("MainActivity", "激活成功，继续启动")
+                if (!isDisclaimerAccepted()) showDisclaimerDialog()
+                else initAfterDisclaimer()
+            }
+        }.show()
     }
 
     private fun initAfterDisclaimer() {
