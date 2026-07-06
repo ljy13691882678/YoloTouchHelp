@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -12,22 +13,26 @@ import org.json.JSONObject
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
-import javax.crypto.Cipher
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
- * 加密: DES加密 (ECB, PKCS5Padding) → hex
+ *
+ * 逐行翻译官方示例伪代码:
+ *   host = "http://wy.llua.cn/v2/"
+ *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
+ *   post_data = Base64加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
+ *   response_data = POST请求(host + apitoken, post_data)
+ *   result = Base64解密(response_data)
  */
 class LicenseManager private constructor(private val context: Context) {
 
     companion object {
         private const val TAG = "LicenseManager"
 
-        private const val API_ID = "2zzEzZET"
-        private const val API_KEY = "EFzFiRY7O3fazBRs"
-        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"
-        private const val DES_KEY = "TfpE2P4kpyfc4Fc"
+        // ========== 后台参数 ==========
+        private const val API_ID = "2zzEzZET"                                // 调用ID
+        private const val API_KEY = "SpJRY4QXptZSa2Q"                       // 程序秘钥
+        private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"    // 请求令牌
         private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -54,11 +59,6 @@ class LicenseManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var hbJob: Job? = null
 
-    // DES key: 取前 8 字节
-    private val desKey = SecretKeySpec(DES_KEY.toByteArray(Charsets.UTF_8).copyOf(8), "DES")
-    private val encCipher = Cipher.getInstance("DES/ECB/PKCS5Padding").apply { init(Cipher.ENCRYPT_MODE, desKey) }
-    private val decCipher = Cipher.getInstance("DES/ECB/PKCS5Padding").apply { init(Cipher.DECRYPT_MODE, desKey) }
-
     private fun deviceId() =
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
@@ -66,17 +66,18 @@ class LicenseManager private constructor(private val context: Context) {
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    /** DES加密 → hex */
-    private fun desEncrypt(s: String): String = synchronized(encCipher) {
-        encCipher.doFinal(s.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    }
+    private fun b64e(s: String) = Base64.encodeToString(
+        s.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
-    /** hex → DES解密 */
-    private fun desDecrypt(hex: String): String = synchronized(decCipher) {
-        val bytes = ByteArray(hex.length / 2)
-        for (i in bytes.indices) bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
-        String(decCipher.doFinal(bytes), Charsets.UTF_8)
-    }
+    private fun b64d(s: String) = String(
+        Base64.decode(s, Base64.NO_WRAP), Charsets.UTF_8)
+
+    // ==================== 步骤1: 计算签名 ====================
+    private fun signLogin(kami: String, mark: String, ts: String) =
+        md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
+
+    private fun signHeartbeat(kami: String, mark: String, ts: String, token: String) =
+        md5("kami=$kami&markcode=$mark&t=$ts&kamitoken=$token&$API_KEY")
 
     // ==================== 单码登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
@@ -84,10 +85,10 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
+            val sign = signLogin(kami, mark, ts)
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
 
-            val (json, code) = doRequest(raw)
+            val (json, code) = apiCall(raw)
             if (code == 200) {
                 val msg = json.getJSONObject("msg")
                 prefs.edit().apply {
@@ -117,10 +118,10 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            val sign = md5("kami=$kami&markcode=$mark&t=$ts&kamitoken=$token&$API_KEY")
+            val sign = signHeartbeat(kami, mark, ts, token)
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
 
-            val (json, code) = doRequest(raw)
+            val (json, code) = apiCall(raw)
             if (code == 200) {
                 prefs.edit().putLong(K_EXPIRE, json.getJSONObject("msg").optLong("endtime", 0)).apply()
                 Result.success(json)
@@ -134,45 +135,52 @@ class LicenseManager private constructor(private val context: Context) {
         }
     }
 
-    // ==================== 请求 ====================
+    // ==================== 步骤2-5: 加密 → 发送 → 解密 → 解析 ====================
 
-    private fun doRequest(raw: String): Pair<JSONObject, Int> {
-        // DES加密 → hex → data=值
-        val encrypted = desEncrypt(raw)
-        val postData = "data=$encrypted"
+    private fun apiCall(raw: String): Pair<JSONObject, Int> {
+        // 步骤2: post_data = Base64加密("id=...&kami=...&sign=...&value=...")
+        val postData = b64e(raw)
 
+        // DATA变量[V1]开启 → 格式: data=Base64值
+        // Base64 + / = 做 URL 编码
+        val body = "data=" + postData
+            .replace("+", "%2B")
+            .replace("/", "%2F")
+            .replace("=", "%3D")
+
+        // 步骤3: response_data = POST请求(host + apitoken, post_data)
         val req = Request.Builder()
             .url(BASE_URL + API_TOKEN)
-            .post(RequestBody.create("application/x-www-form-urlencoded".toMediaType(), postData))
+            .post(RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body))
             .build()
 
         val respBody = try {
             val r = http.newCall(req).execute()
-            val body = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, resp[0:200]=${body.take(200)}")
-            if (body.isEmpty()) return JSONObject("""{"code":-1,"msg":"服务器返回空"}""") to -1
-            body
+            val b = r.body?.string()?.trim() ?: ""
+            Log.d(TAG, "HTTP ${r.code}, resp=${b.take(200)}")
+            if (b.isEmpty()) return JSONObject("""{"code":-1,"msg":"空响应"}""") to -1
+            b
         } catch (e: IOException) {
             return JSONObject("""{"code":-1,"msg":"网络错误: ${e.message}"}""") to -1
         }
 
-        // 先试明文JSON → 再试DES hex解密
+        // 步骤4: result = Base64解密(response_data)
+        // 步骤5: jsonData = JSON解析(result)
+        // 先试明文JSON（服务器可能返回明文错误），再试Base64解密
         try {
             val json = JSONObject(respBody)
-            val code = json.optInt("code", -1)
-            if (code != -1) return json to code
+            return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
         try {
-            val plaintext = desDecrypt(respBody)
-            val json = JSONObject(plaintext)
-            return json to json.optInt("code", -1)
+            val plaintext = b64d(respBody)
+            return JSONObject(plaintext) to JSONObject(plaintext).optInt("code", -1)
         } catch (_: Exception) { }
 
         return JSONObject("""{"code":-1,"msg":"${respBody.take(60)}"}""") to -1
     }
 
-    private fun errMsg(json: JSONObject): String = when (json.optInt("code", -1)) {
+    private fun errMsg(json: JSONObject) = when (json.optInt("code", -1)) {
         100 -> "API不存在";  102 -> "应用已关闭";  104 -> "签名为空"
         105 -> "数据过期";   106 -> "签名错误";    107 -> "数据为空"
         108 -> "未提交时间"; 112 -> "未提交设备码"; 148 -> "卡密为空"
@@ -180,6 +188,7 @@ class LicenseManager private constructor(private val context: Context) {
         153 -> "卡密被禁用"; else -> json.optString("msg", "未知错误")
     }
 
+    // ==================== 状态 ====================
     fun checkState(): State {
         if (!prefs.getBoolean(K_ACTIVE, false)) return State.UNACTIVATED
         val exp = prefs.getLong(K_EXPIRE, 0)
