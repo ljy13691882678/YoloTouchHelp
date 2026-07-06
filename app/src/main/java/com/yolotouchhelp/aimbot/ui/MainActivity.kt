@@ -161,7 +161,7 @@ class MainActivity : AppCompatActivity() {
             }
             LicenseManager.State.ACTIVE -> {
                 LicenseManager.get().startHeartbeat()
-                Log.d(TAG, "许可证有效: ${LicenseManager.get().remainingFormatted()}")
+                Log.d("MainActivity", "许可证有效: ${LicenseManager.get().remainingFormatted()}")
             }
         }
 
