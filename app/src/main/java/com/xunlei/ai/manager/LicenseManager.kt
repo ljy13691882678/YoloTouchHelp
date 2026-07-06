@@ -17,7 +17,6 @@ import java.util.concurrent.TimeUnit
  * 微验 llua.cn 网络验证管理器 V2
  *
  * 接口文档: https://app.llua.cn/setapi/v2/help/
- * 加密已关闭 → 全部明文通信
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -28,7 +27,8 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "57549"                              // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                  // 程序秘钥
         private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f" // 请求令牌
-        private const val BASE_URL = "https://wy.llua.cn/v2/"
+        private const val ENC_KEY = "CRaM54xWs2DxDPC"                   // RC4加密密钥
+        private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
@@ -137,7 +137,7 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 请求 ====================
 
     private fun doRequest(data: String): Pair<JSONObject, Int> {
-        val body = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), data)
+        val body = RequestBody.create("text/plain".toMediaType(), data)
         val req = Request.Builder().url(BASE_URL + API_TOKEN).post(body).build()
         return try {
             val r = http.newCall(req).execute()
