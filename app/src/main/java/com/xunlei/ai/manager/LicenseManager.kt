@@ -138,23 +138,26 @@ class LicenseManager private constructor(private val context: Context) {
      * 直到 code=200 或遇到非(100/106)的错误
      */
     private suspend fun tryAllFormats(raw: String): Result<JSONObject> {
+        // 先尝试明文（后台关闭加密时使用）
+        // 再尝试 RC4 hex 加密（后台开启加密时使用）
         val formats = listOf(
-            raw,                                    // 明文
-            crypto.encrypt(raw, ENC_KEY),            // RC4 hex
-            "data=" + crypto.encrypt(raw, ENC_KEY)   // data=加密值 (V1 DATA变量)
+            raw to "明文",
+            crypto.encrypt(raw, ENC_KEY) to "RC4-hex",
+            "data=" + crypto.encrypt(raw, ENC_KEY) to "data=RC4-hex"
         )
         var lastError: JSONObject? = null
-        for ((i, body) in formats.withIndex()) {
+        for ((body, label) in formats) {
             val resp = post(body)
             if (resp.isFailure) continue
-            val json = parseResponse(resp.getOrThrow().trim())
-            val code = json.optInt("code", -1)
+            val (json, code) = parseWithCode(resp.getOrThrow().trim())
             if (code == 200) {
-                Log.d(TAG, "请求成功，格式索引: $i")
+                Log.d(TAG, "请求成功，格式: $label")
                 return Result.success(json)
             }
             lastError = json
-            if (code != 100 && code != 106) break
+            // 如果加密相关错误，继续尝试下一种格式
+            if (code == 100 || code == 106 || code == 107) continue
+            break
         }
         val err = lastError ?: JSONObject("""{"code":-1,"msg":"所有格式均失败"}""")
         return Result.failure(LicenseException(err.optInt("code", -1), errMsg(err)))
@@ -174,15 +177,17 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     /**
-     * 解析响应: 先尝试明文JSON，失败则 hex→RC4 解密
+     * 解析响应并返回 (JSONObject, code)
+     * 先尝试明文JSON，失败则 hex→RC4 解密
      */
-    private fun parseResponse(body: String): JSONObject {
-        return try {
+    private fun parseWithCode(body: String): Pair<JSONObject, Int> {
+        val json = try {
             JSONObject(body)
         } catch (_: Exception) {
             Log.d(TAG, "响应非明文 JSON，尝试 hex 解密")
             JSONObject(crypto.decrypt(body, ENC_KEY))
         }
+        return json to json.optInt("code", -1)
     }
 
     private fun errMsg(json: JSONObject): String = when (json.optInt("code", -1)) {
