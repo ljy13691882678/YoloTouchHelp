@@ -84,7 +84,7 @@ class LicenseManager private constructor(private val context: Context) {
 
     /** RC4加密 → hex小写 (GBK编码) */
     private fun encrypt(plaintext: String): String =
-        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(Charsets.forName("GBK")))
+        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(java.nio.charset.Charset.forName("GBK")))
             .joinToString("") { "%02x".format(it) }
 
     /** RC4解密: hex → RC4 → 明文 (GBK解码) */
@@ -93,7 +93,7 @@ class LicenseManager private constructor(private val context: Context) {
         for (i in bytes.indices) {
             bytes[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }
-        return String(rc4(RC4_KEY.toByteArray(), bytes), Charsets.forName("GBK"))
+        return String(rc4(RC4_KEY.toByteArray(), bytes), java.nio.charset.Charset.forName("GBK"))
     }
 
     // ==================== 卡密登录 ====================
