@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
-import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.*
 import okhttp3.*
@@ -16,16 +15,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
- *
- * 严格按官方文档: https://app.llua.cn/setapi/v2/help/
- *
- * 文档伪代码:
- *   host = "https://wy.llua.cn/v2/"
- *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
- *   post_data = Base64加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
- *   response_data = POST请求(host + apitoken, post_data)
- *   result = Base64解密(response_data)
- *   jsonData = JSON解析(result)
+ * 加密: RC4加密-2 (hex)
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -35,6 +25,7 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "GHy4KpmX"                                // 调用ID
         private const val API_KEY = "EFzFiRY7O3fazBRs"                     // 程序秘钥
         private const val API_TOKEN = "1c80e20f259ddf742794197103bac9ef"   // 请求令牌
+        private const val RC4_KEY = "WyCAhR5dFPSEsrY"                      // RC4加密密钥
         private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
@@ -71,11 +62,39 @@ class LicenseManager private constructor(private val context: Context) {
     private fun md5(s: String) = MessageDigest.getInstance("MD5")
         .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun base64Encode(data: String) = Base64.encodeToString(
-        data.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+    // ==================== RC4 加密/解密 ====================
 
-    private fun base64Decode(data: String) = String(
-        Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8)
+    private fun rc4(key: ByteArray, data: ByteArray): ByteArray {
+        val s = IntArray(256) { it }
+        var j = 0
+        for (i in 0..255) {
+            j = (j + s[i] + (key[i % key.size].toInt() and 0xFF)) and 0xFF
+            val tmp = s[i]; s[i] = s[j]; s[j] = tmp
+        }
+        val out = ByteArray(data.size)
+        var i = 0; j = 0
+        for (k in data.indices) {
+            i = (i + 1) and 0xFF
+            j = (j + s[i]) and 0xFF
+            val tmp = s[i]; s[i] = s[j]; s[j] = tmp
+            out[k] = (data[k].toInt() xor s[(s[i] + s[j]) and 0xFF]).toByte()
+        }
+        return out
+    }
+
+    /** RC4加密 → hex小写 */
+    private fun encrypt(plaintext: String): String =
+        rc4(RC4_KEY.toByteArray(), plaintext.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
+    /** RC4解密: hex → RC4 → 明文 */
+    private fun decrypt(hexStr: String): String {
+        val bytes = ByteArray(hexStr.length / 2)
+        for (i in bytes.indices) {
+            bytes[i] = hexStr.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+        }
+        return String(rc4(RC4_KEY.toByteArray(), bytes), Charsets.UTF_8)
+    }
 
     // ==================== 卡密登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
@@ -83,9 +102,7 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            // 步骤1: sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
             val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
-            // 步骤2: post_data = Base64加密("id=" + id + "&kami=" + ... + "&sign=" + sign + "&value=" + 随机数)
             val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
 
             val (json, code) = doRequest(raw, "激活")
@@ -140,36 +157,29 @@ class LicenseManager private constructor(private val context: Context) {
         }
     }
 
-    // ==================== 请求（严格按文档 4 步） ====================
+    // ==================== 请求 ====================
 
     private fun doRequest(raw: String, label: String): Pair<JSONObject, Int> {
-        // 步骤2: post_data = Base64加密(...)
-        val postData = base64Encode(raw)
+        // RC4加密 → hex
+        val encrypted = encrypt(raw)
 
-        // 步骤3: response_data = POST请求(host + apitoken, post_data)
-        // 文档中 post_data 直接作为请求体，不包 data= 前缀
-        // 同时兼容后台"DATA变量[V1]"开启的情况
+        // DATA变量[V1]开启 → data=加密值
+        // 同时尝试直接发送（兼容不同配置）
         val formats = listOf(
-            // 格式A: 直接发送 Base64 (文档标准)
-            postData to "text/plain",
-            // 格式B: data=Base64 (DATA变量开启)
-            "data=$postData" to "application/x-www-form-urlencoded",
+            "data=$encrypted" to "application/x-www-form-urlencoded",
+            encrypted to "text/plain",
         )
 
         for ((body, contentType) in formats) {
             val resp = tryPost(body, contentType)
             if (resp == null) continue
 
-            // 步骤4: result = Base64解密(response_data)
-            // 步骤5: jsonData = JSON解析(result)
             val (json, code) = tryParse(resp)
             if (code == 200 || code in 100..199) {
                 Log.d(TAG, "$label success: code=$code")
                 return json to code
             }
-            // 签名错误/数据为空 → 可能是格式不对，继续尝试
             if (code == 106 || code == 107) continue
-            // 其他错误直接返回（卡密不存在等）
             return json to code
         }
         return JSONObject("""{"code":-1,"msg":"所有格式均失败"}""") to -1
@@ -190,24 +200,22 @@ class LicenseManager private constructor(private val context: Context) {
     }
 
     /**
-     * 步骤4+5: Base64解密 → JSON解析
-     * 同时兼容服务器返回明文的情况
+     * 解析响应: 先试明文JSON → 再试RC4 hex解密
      */
     private fun tryParse(respBody: String): Pair<JSONObject, Int> {
-        // 先试明文 JSON（服务器可能不加密响应）
+        // 先试明文 JSON
         try {
             val json = JSONObject(respBody)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
-        // 再试 Base64 解密
+        // 再试 RC4 hex 解密
         try {
-            val plaintext = base64Decode(respBody)
+            val plaintext = decrypt(respBody)
             val json = JSONObject(plaintext)
             return json to json.optInt("code", -1)
         } catch (_: Exception) { }
 
-        // 都失败，返回原文前缀
         return JSONObject("""{"code":-1,"msg":"${respBody.take(60)}"}""") to -1
     }
 
