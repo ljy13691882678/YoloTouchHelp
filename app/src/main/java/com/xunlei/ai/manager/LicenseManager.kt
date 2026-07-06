@@ -33,7 +33,7 @@ class LicenseManager private constructor(private val context: Context) {
         private const val API_ID = "2zzEzZET"
         private const val API_KEY = "EFzFiRY7O3fazBRs"
         private const val API_TOKEN = "a5b495fad4ac8a85ba6c5304cc428523"
-        private const val BASE_URL = "http://lvy.liua.cn/v2/"
+        private const val BASE_URL = "http://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
@@ -133,13 +133,18 @@ class LicenseManager private constructor(private val context: Context) {
 
     private fun doRequest(raw: String, label: String): Pair<JSONObject, Int> {
         // 步骤2: post_data = Base64加密(...)
-        val postData = b64e(raw)
+        // DATA变量[V1] 开启 → 格式: data=Base64值
+        // Base64中的 + / = 需要 URL 编码，避免被服务器误解析
+        val encoded = b64e(raw)
+            .replace("+", "%2B")
+            .replace("/", "%2F")
+            .replace("=", "%3D")
+        val postData = "data=$encoded"
 
         // 步骤3: response_data = POST请求(host + apitoken, post_data)
-        // 文档直接发送加密字符串，不包 data= 前缀
         val req = Request.Builder()
             .url(BASE_URL + API_TOKEN)
-            .post(RequestBody.create("text/plain".toMediaType(), postData))
+            .post(RequestBody.create("application/x-www-form-urlencoded".toMediaType(), postData))
             .build()
 
         val respBody = try {
