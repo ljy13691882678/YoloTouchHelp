@@ -1,12 +1,16 @@
-// touch_core.cpp — Smooth single-touch human simulation (SMOOTH V2)
+// touch_core.cpp — Smooth touch simulation with anti-detection hardening
 // Based on native_touch.cpp + reader threads from TouchHelperA
 // Shared by JNI (Shizuku) and root_daemon (su)
 //
-// Design philosophy for single-touch:
-//   1. Virtual finger position uses exponential smoothing — no instant jumps, no jitter
-//   2. Pressure and TouchMajor stay in narrow realistic bands (not swinging 90 units/frame)
-//   3. No random jitter added per frame — smoothness > "looks random"
-//   4. The smoothing factor gives a natural "finger drags slightly behind intent" feel
+// Anti-detection improvements:
+//   1. Expanded device name pool (30+ real touch chip names)
+//   2. Micro-jitter on virtual coordinates (±1.5px random walk)
+//   3. Wider pressure band (120~180) with slow drift
+//   4. Wider touch_major band (18~38) with correlation to pressure
+//   5. Dynamic BTN_TOOL_FINGER (1 for single, 0 for multi-touch)
+//   6. Expanded phys path templates (10+ patterns)
+//   7. Per-frame smoothing factor variation (±15%)
+//   8. Virtual slot IDs initialized per-session (not hardcoded 8,9)
 
 #include "touch_core.h"
 #include <dirent.h>
@@ -102,11 +106,20 @@ static Zone g_ads_zone;
 static Zone g_fire_zone;
 static Zone g_joystick_zone;
 
-// ─── Smoothing parameter ────────────────────────────────────────────
-// 0.0 = no smoothing (instant jump), 1.0 = never moves
-// 0.35 means each frame covers ~35% of remaining distance → smooth approach
-// At ~60fps this reaches 95% of target in ~7 frames (~117ms) — feels like human delay
-static constexpr float kSmoothFactor = 0.35f;
+// ─── Anti-detection: randomized per-session parameters ───────────────
+
+// Virtual slot IDs — randomized on init, not hardcoded 8,9
+static int g_virtual_slot = 8;
+static int g_trigger_slot = 9;
+static int g_virtual_id = 1000;
+static int g_trigger_id = 2000;
+
+// Smoothing factor base with per-frame variation
+static constexpr float kSmoothFactorBase = 0.35f;
+
+// Pressure drift state (slow random walk)
+static int g_pressure_base = 148;
+static float g_pressure_drift = 0.0f;
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -221,20 +234,41 @@ static inline unsigned int fastRand() {
     return x;
 }
 
+// Return a float in [0, 1) using fastRand
+static inline float randFloat() {
+    return static_cast<float>(fastRand() & 0xFFFFFF) / 16777216.0f;
+}
+
+// Return a float in [-1, 1)
+static inline float randFloatSym() {
+    return randFloat() * 2.0f - 1.0f;
+}
+
 // ─── Upload ──────────────────────────────────────────────────────────
 //
-// Key smooth behavior:
-//   - Virtual fingers: apply exponential smoothing (pos approaches targetPos)
-//   - Physical fingers: report raw position as-is (no smoothing needed)
-//   - Pressure: stable narrow band 148~155 (not 110~200)
-//   - TouchMajor: stable 26~29
-//   - NO per-frame random jitter on coordinates
+// Anti-detection behavior:
+//   - Virtual fingers: apply exponential smoothing with ±15% factor variation
+//   - Physical fingers: report raw position as-is
+//   - Pressure: 120~180 band with slow drift (not static 148~155)
+//   - TouchMajor: 18~38 with correlation to pressure
+//   - Micro-jitter: ±1.5px random walk on virtual finger positions
+//   - BTN_TOOL_FINGER: 1 for single finger, 0 for multi-touch
 
 static void upload() {
     if (g_outputFd <= 0) return;
     int count = 0;
     int activeFingerCount = 0;
     bool hasActiveFinger = false;
+
+    // Per-frame smoothing factor variation (±15%)
+    float smoothFactor = kSmoothFactorBase * (0.85f + randFloat() * 0.3f);
+    smoothFactor = std::clamp(smoothFactor, 0.25f, 0.45f);
+
+    // Slow pressure drift (±2 per frame, bounded 120~180)
+    g_pressure_drift += randFloatSym() * 2.0f;
+    g_pressure_drift = std::clamp(g_pressure_drift, -28.0f, 32.0f);
+    int pressureBase = g_pressure_base + static_cast<int>(g_pressure_drift);
+    pressureBase = std::clamp(pressureBase, 120, 180);
 
     for (int fi = 0; fi < maxF; ++fi) {
         TouchObj& finger = g_devices[0].fingers[fi];
@@ -246,18 +280,14 @@ static void upload() {
             if (finger.isVirtual) {
                 float dx = finger.targetPos.x - finger.pos.x;
                 float dy = finger.targetPos.y - finger.pos.y;
-                // Only smooth if there's meaningful distance to travel
                 float dist2 = dx * dx + dy * dy;
                 if (dist2 > 0.5f) {
-                    // Exponential approach: move fraction of remaining distance
-                    finger.pos.x += dx * kSmoothFactor;
-                    finger.pos.y += dy * kSmoothFactor;
+                    finger.pos.x += dx * smoothFactor;
+                    finger.pos.y += dy * smoothFactor;
                 } else {
-                    // Close enough — snap to avoid sub-pixel drift
                     finger.pos = finger.targetPos;
                 }
             }
-            // Physical fingers don't get smoothed
 
             hasActiveFinger = true;
             ++activeFingerCount;
@@ -266,21 +296,29 @@ static void upload() {
             if (!wasUploaded)
                 pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, finger.id);
 
-            // ── Position: exact smoothed value, NO random jitter ──
+            // ── Position with micro-jitter for virtual fingers ──
             int posX = static_cast<int>(std::lround(finger.pos.x));
             int posY = static_cast<int>(std::lround(finger.pos.y));
+            if (finger.isVirtual) {
+                // Sub-pixel jitter: ±1.5px random walk, slow enough to not look like noise
+                posX += static_cast<int>(std::lround(randFloatSym() * 1.5f));
+                posY += static_cast<int>(std::lround(randFloatSym() * 1.5f));
+            }
 
             pushEvent(count, EV_ABS, ABS_MT_POSITION_X, posX);
             pushEvent(count, EV_ABS, ABS_MT_POSITION_Y, posY);
             pushEvent(count, EV_ABS, ABS_X, posX);
             pushEvent(count, EV_ABS, ABS_Y, posY);
 
-            // ── Pressure: narrow human-like band 148~155 ──
-            // Real finger pressure on glass is naturally stable
-            // ±3 variation is from slight changes in contact angle
-            int pressure = 148 + (fastRand() % 8);      // 148~155
-            int touchMajor = 26 + (fastRand() % 4);      // 26~29
-            int touchMinor = touchMajor - 5 + (fastRand() % 3); // 21~27 (slightly smaller than major, like real finger)
+            // ── Pressure: 120~180 with frame-level variation ──
+            int pressure = pressureBase + (static_cast<int>(fastRand()) % 11) - 5;  // ±5 from base
+            pressure = std::clamp(pressure, 110, 190);
+
+            // TouchMajor: 18~38, correlated with pressure
+            int touchMajor = 18 + (pressure - 110) * 20 / 80 + (static_cast<int>(fastRand()) % 5) - 2;
+            touchMajor = std::clamp(touchMajor, 16, 40);
+            int touchMinor = touchMajor - 5 + (static_cast<int>(fastRand()) % 7);  // 11~42
+            touchMinor = std::clamp(touchMinor, 12, 42);
 
             pushEvent(count, EV_ABS, ABS_MT_PRESSURE, pressure);
             pushEvent(count, EV_ABS, ABS_PRESSURE, pressure);
@@ -298,7 +336,8 @@ static void upload() {
     }
 
     pushEvent(count, EV_KEY, BTN_TOUCH, hasActiveFinger ? 1 : 0);
-    pushEvent(count, EV_KEY, BTN_TOOL_FINGER, 1);  // single touch
+    // Dynamic: BTN_TOOL_FINGER only for single-touch, 0 for multi-touch
+    pushEvent(count, EV_KEY, BTN_TOOL_FINGER, (activeFingerCount == 1) ? 1 : 0);
     pushEvent(count, EV_SYN, SYN_REPORT, 0);
 
     ssize_t written = write(g_outputFd, g_inputBuffer.event, sizeof(input_event) * count);
@@ -345,15 +384,28 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         return false;
     }
 
+    // Expanded device name pool: 30+ real touch chip names
     static const char* touch_chip_names[] = {
         "goodix_ts", "ft5x06_ts", "atmel_mxt_ts", "synaptics_dsx",
         "cyttsp5_i2c", "ilitek_ts", "novatek_ts", "focaltech_ts",
-        "himax_ts", "sitronix_ts"
+        "himax_ts", "sitronix_ts",
+        "elan_ts", "ektf3xxx", "zinitix_ts", "melfas_mcs",
+        "st_fts", "chipone_ts", "solomon_ts", "rohm_bu21023",
+        "silead_ts", "samsung_ts", "synaptics_tcm", "parade_ts",
+        "pixcir_tangoc", "wx_ts", "gt9xx", "ft6236",
+        "tsc2007", "edt_ft5x06", "ads7846", "egalax_ts",
+        "usbtouchscreen", "wm97xx", "cy8ctmg110"
     };
     static const unsigned short touch_vendor_ids[] = {
         0x27C6, 0x38F7, 0x03EB, 0x06CB,
         0x04B4, 0x222A, 0x0603, 0x38F7,
-        0x1241, 0x1016
+        0x1241, 0x1016,
+        0x04F3, 0x22B9, 0x2A94, 0x1FD2,
+        0x0483, 0x2BE4, 0x0EEF, 0x04B4,
+        0x266E, 0x04E8, 0x06CB, 0x32AC,
+        0x1CBE, 0x2575, 0x27C6, 0x38F7,
+        0x0641, 0x0EEF, 0x0457, 0x0EEF,
+        0x0EEF, 0x22B9, 0x04B4
     };
     static const int chip_count = sizeof(touch_chip_names) / sizeof(touch_chip_names[0]);
     int chip_idx = fastRand() % chip_count;
@@ -362,8 +414,8 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
 
     uiDev.id.bustype = BUS_I2C;
     uiDev.id.vendor = touch_vendor_ids[chip_idx];
-    uiDev.id.product = 0x0001 + (fastRand() & 0x0F);
-    uiDev.id.version = 0x0100 + (fastRand() & 0x0FF);
+    uiDev.id.product = 0x0001 + (fastRand() & 0x7F);
+    uiDev.id.version = 0x0100 + (fastRand() & 0x1FF);
 
     ioctl(g_outputFd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
     ioctl(g_outputFd, UI_SET_EVBIT, EV_ABS);
@@ -387,16 +439,22 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOOL_FINGER);
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOUCH);
 
+    // Expanded phys path templates
     static const char* fake_phys_paths[] = {
-        "i2c/0-0038/input/input",
-        "i2c/1-005d/input/input",
-        "i2c/2-0020/input/input",
-        "platform/soc/78b9000.i2c/i2c-3/3-0040/input/input",
-        "platform/goodix_ts.0/input/input"
+        "i2c/0-0038", "i2c/1-005d", "i2c/2-0020",
+        "platform/soc/78b9000.i2c/i2c-3/3-0040",
+        "platform/goodix_ts.0",
+        "i2c/4-0049", "i2c/5-0014",
+        "platform/soc/990000.i2c/i2c-6/6-0038",
+        "platform/soc/c1b0000.i2c/i2c-7/7-005d",
+        "platform/msm_ssbi.0/pm8038-core",
+        "spi/spi0.0", "i2c/8-002a",
+        "platform/soc/ahb/ahb:apb/apb:i2c@1c28000/i2c-bus/input"
     };
-    int phys_idx = fastRand() % 5;
-    char physPath[64];
-    snprintf(physPath, sizeof(physPath), "%s%d", fake_phys_paths[phys_idx], fastRand() % 10);
+    int phys_count = sizeof(fake_phys_paths) / sizeof(fake_phys_paths[0]);
+    int phys_idx = fastRand() % phys_count;
+    char physPath[80];
+    snprintf(physPath, sizeof(physPath), "%s/input/input%d", fake_phys_paths[phys_idx], fastRand() % 10);
     ioctl(g_outputFd, UI_SET_PHYS, physPath);
 
     input_id id{};
@@ -529,8 +587,6 @@ static void* deviceReader(void* arg) {
                 }
             }
 
-            // Forward physical touch events through uinput so the system sees them
-            // (EVIOCGRAB captures events, so we must replay them ourselves)
             if (ie.type == EV_SYN && ie.code == SYN_REPORT) {
                 upload();
             }
@@ -556,6 +612,17 @@ bool touch_init(int screenW, int screenH) {
     g_rand_seed.store(
         static_cast<unsigned int>(time(nullptr) ^ reinterpret_cast<uintptr_t>(&g_rand_seed)),
         std::memory_order_relaxed);
+
+    // Randomize virtual slot IDs on each init (avoid fixed 8, 9 pattern)
+    g_virtual_slot = 5 + static_cast<int>(fastRand() % 4);    // 5~8
+    g_trigger_slot = g_virtual_slot + 1;
+    if (g_trigger_slot >= 9) g_trigger_slot = 5;
+    g_virtual_id = 800 + static_cast<int>(fastRand() % 400);   // 800~1199
+    g_trigger_id = g_virtual_id + 500 + static_cast<int>(fastRand() % 500);  // +500~999
+
+    // Randomize pressure base per session
+    g_pressure_base = 130 + static_cast<int>(fastRand() % 40);  // 130~169
+    g_pressure_drift = 0.0f;
 
     Vec2 size(static_cast<float>(screenW), static_cast<float>(screenH));
     g_screenSize = size.x > size.y ? size : Vec2(size.y, size.x);
@@ -606,7 +673,8 @@ bool touch_init(int screenW, int screenH) {
     g_touchScale.x = static_cast<float>(touchMaxX) / std::max(1.0f, logical.x);
     g_touchScale.y = static_cast<float>(touchMaxY) / std::max(1.0f, logical.y);
     g_initialized = true;
-    LOGD("touch ready scale=%.3f,%.3f smooth_factor=%.2f", g_touchScale.x, g_touchScale.y, kSmoothFactor);
+    LOGD("touch ready scale=%.3f,%.3f v_slot=%d t_slot=%d p_base=%d",
+         g_touchScale.x, g_touchScale.y, g_virtual_slot, g_trigger_slot, g_pressure_base);
     return true;
 }
 
@@ -658,8 +726,6 @@ void touch_down(int slot, int id, int screenX, int screenY) {
     float tx, ty;
     screenToTouch(screenX, screenY, tx, ty);
     TouchObj& finger = g_devices[0].fingers[slot];
-    // On finger down, set both pos and targetPos to the touch point
-    // (no smoothing on initial touch — instant placement)
     finger.id = id;
     finger.pos = Vec2(tx, ty);
     finger.targetPos = finger.pos;
@@ -674,7 +740,6 @@ void touch_move(int slot, int screenX, int screenY) {
     float tx, ty;
     screenToTouch(screenX, screenY, tx, ty);
     TouchObj& finger = g_devices[0].fingers[slot];
-    // Only update target — upload() will apply exponential smoothing
     finger.targetPos = Vec2(tx, ty);
     finger.isVirtual = true;
     upload();

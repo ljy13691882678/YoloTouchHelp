@@ -1,5 +1,7 @@
 // uinput_inject.cpp — Thin JNI wrapper over touch_core
 // All core logic lives in touch_core.cpp
+//
+// Anti-detection: uses runtime slot/ID getters instead of compile-time macros.
 
 #include <jni.h>
 #include <android/log.h>
@@ -50,8 +52,12 @@ JNIEXPORT jint JNICALL
 Java_com_xunlei_ai_service_RemoteInjectorService_openUinputNative(
     JNIEnv*, jobject)
 {
-    if (touch_init(g_screen_w, g_screen_h))
+    if (touch_init(g_screen_w, g_screen_h)) {
+        LOGD("openUinputNative: OK, virtual_slot=%d trigger_slot=%d virtual_id=%d trigger_id=%d",
+             touch_get_virtual_slot(), touch_get_trigger_slot(),
+             touch_get_virtual_id(), touch_get_trigger_id());
         return touch_get_output_fd();
+    }
     return -1;
 }
 
@@ -76,14 +82,14 @@ Java_com_xunlei_ai_service_RemoteInjectorService_stopGeteventListenerNative(
     touch_stop_readers();
 }
 
-// ─── Virtual touch (aim) — uses TOUCH_VIRTUAL_SLOT on device 0 ──────
+// ─── Virtual touch (aim) — uses randomized slot/ID from touch_core ──
 
 JNIEXPORT jboolean JNICALL
 Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendDown(
     JNIEnv*, jobject, jint, jint x, jint y, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
-    touch_down(TOUCH_VIRTUAL_SLOT, TOUCH_VIRTUAL_ID, x, y);
+    touch_down(touch_get_virtual_slot(), touch_get_virtual_id(), x, y);
     return JNI_TRUE;
 }
 
@@ -92,7 +98,7 @@ Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendMove(
     JNIEnv*, jobject, jint, jint x, jint y, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
-    touch_move(TOUCH_VIRTUAL_SLOT, x, y);
+    touch_move(touch_get_virtual_slot(), x, y);
     return JNI_TRUE;
 }
 
@@ -101,18 +107,18 @@ Java_com_xunlei_ai_service_RemoteInjectorService_uinputSendUp(
     JNIEnv*, jobject, jint, jint)
 {
     if (!touch_is_initialized()) return JNI_FALSE;
-    touch_up(TOUCH_VIRTUAL_SLOT);
+    touch_up(touch_get_virtual_slot());
     return JNI_TRUE;
 }
 
-// ─── Trigger touch — uses TOUCH_TRIGGER_SLOT on device 0 ────────────
+// ─── Trigger touch — uses randomized slot/ID from touch_core ────────
 
 JNIEXPORT void JNICALL
 Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerDown(
     JNIEnv*, jobject, jint x, jint y)
 {
     if (!touch_is_initialized()) return;
-    touch_down(TOUCH_TRIGGER_SLOT, TOUCH_TRIGGER_ID, x, y);
+    touch_down(touch_get_trigger_slot(), touch_get_trigger_id(), x, y);
 }
 
 JNIEXPORT void JNICALL
@@ -120,7 +126,7 @@ Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerUp(
     JNIEnv*, jobject)
 {
     if (!touch_is_initialized()) return;
-    touch_up(TOUCH_TRIGGER_SLOT);
+    touch_up(touch_get_trigger_slot());
 }
 
 // ─── Zone configuration ────────────────────────────────────────────
@@ -193,4 +199,3 @@ Java_com_xunlei_ai_service_RemoteInjectorService_nativeLiftJoystickFinger(
 }
 
 } // extern "C"
-
