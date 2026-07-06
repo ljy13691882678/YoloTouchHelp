@@ -11,15 +11,17 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import org.json.JSONObject
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 /**
  * 微验 llua.cn 网络验证管理器 V2
  *
- * 后台配置:
- *   加密: BASE64加密 (标准)
- *   签名: 关闭
- *   传输: DATA变量[V1] → data=加密值
+ * 完全按官方文档: https://app.llua.cn/setapi/v2/help/
+ *   host = "https://wy.llua.cn/v2/"
+ *   sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
+ *   post_data = 自定义算法加密("id=" + id + "&kami=" + ...)
+ *   response = POST(host + apitoken, post_data)
  */
 class LicenseManager private constructor(private val context: Context) {
 
@@ -27,9 +29,9 @@ class LicenseManager private constructor(private val context: Context) {
         private const val TAG = "LicenseManager"
 
         private const val API_ID = "0BC8752F37D"                            // 调用ID
-        private const val API_KEY = "EFzFiRY7O3fazBRs"                  // 程序秘钥
-        private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f" // 请求令牌
-        private const val BASE_URL = "http://wy.llua.cn/v2/"
+        private const val API_KEY = "EFzFiRY7O3fazBRs"                     // 程序秘钥
+        private const val API_TOKEN = "339731977c4d1901e05cc03e9a65566f"   // 请求令牌
+        private const val BASE_URL = "https://wy.llua.cn/v2/"
 
         private const val PREFS = "llua_license"
         private const val K_ACTIVE = "active"
@@ -62,13 +64,14 @@ class LicenseManager private constructor(private val context: Context) {
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
             ?: (Build.MODEL + "_" + Build.SERIAL)
 
-    private fun encode(data: String) = Base64.encodeToString(
-        data.toByteArray(Charsets.UTF_8), Base64.NO_WRAP
-    )
+    private fun md5(s: String) = MessageDigest.getInstance("MD5")
+        .digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
-    private fun decode(data: String) = String(
-        Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8
-    )
+    private fun b64e(data: String) = Base64.encodeToString(
+        data.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+    private fun b64d(data: String) = String(
+        Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8)
 
     // ==================== 卡密登录 ====================
     suspend fun activate(kami: String): Result<JSONObject> = withContext(Dispatchers.IO) {
@@ -76,8 +79,9 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            // 签名开关关闭，发送 sign=0
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=0&value=$valStr"
+            // 严格按文档: sign = md5("kami=" + 卡密 + "&markcode=" + 设备码 + "&t=" + 时间戳 + "&" + appkey)
+            val sign = md5("kami=$kami&markcode=$mark&t=$ts&$API_KEY")
+            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&value=$valStr"
 
             val (json, code) = doRequest(raw)
             Log.d(TAG, "激活响应: code=$code")
@@ -112,7 +116,8 @@ class LicenseManager private constructor(private val context: Context) {
             val mark = deviceId()
             val ts = (System.currentTimeMillis() / 1000).toString()
             val valStr = (10000000..99999999).random().toString()
-            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=0&kamitoken=$token&value=$valStr"
+            val sign = md5("kami=$kami&markcode=$mark&t=$ts&kamitoken=$token&$API_KEY")
+            val raw = "id=$API_ID&kami=$kami&markcode=$mark&t=$ts&sign=$sign&kamitoken=$token&value=$valStr"
 
             val (json, code) = doRequest(raw)
             if (code == 200) {
@@ -135,38 +140,43 @@ class LicenseManager private constructor(private val context: Context) {
     // ==================== 请求 ====================
 
     private fun doRequest(raw: String): Pair<JSONObject, Int> {
-        // 标准Base64加密 → data=加密值
-        val encoded = encode(raw)
-        val body = "data=$encoded"
-        Log.d(TAG, "data=$encoded")
+        // 按文档: post_data = Base64加密(...)
+        val encoded = b64e(raw)
+        // 尝试两种格式: 带 data= 前缀 (DATA变量开启) 和 不带前缀
+        val formats = listOf("data=$encoded", encoded)
 
-        val reqBody = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body)
-        val req = Request.Builder().url(BASE_URL + API_TOKEN).post(reqBody).build()
-        return try {
-            val r = http.newCall(req).execute()
-            val respBody = r.body?.string()?.trim() ?: ""
-            Log.d(TAG, "HTTP ${r.code}, 响应: ${respBody.take(200)}")
+        for (body in formats) {
+            Log.d(TAG, "请求体: ${body.take(80)}...")
+            val reqBody = RequestBody.create("application/x-www-form-urlencoded".toMediaType(), body)
+            val req = Request.Builder().url(BASE_URL + API_TOKEN).post(reqBody).build()
+            try {
+                val r = http.newCall(req).execute()
+                val respBody = r.body?.string()?.trim() ?: ""
+                Log.d(TAG, "HTTP ${r.code}, 响应: ${respBody.take(200)}")
 
-            if (respBody.isEmpty()) {
-                JSONObject("""{"code":-1,"msg":"服务器返回空 (HTTP ${r.code})"}""") to -1
-            } else {
-                // 先试明文，再试Base64解密
+                if (respBody.isEmpty()) continue
+
+                // 先试明文 JSON，再试 Base64 解密
                 val plaintext = try {
                     JSONObject(respBody); respBody
                 } catch (_: Exception) {
-                    try { decode(respBody) } catch (_: Exception) { respBody }
+                    try { b64d(respBody) } catch (_: Exception) { respBody }
                 }
                 try {
                     val json = JSONObject(plaintext)
-                    json to json.optInt("code", -1)
+                    val code = json.optInt("code", -1)
+                    // 如果是数据为空/签名错误等，可能是格式不对，继续尝试
+                    if (code == 107) continue
+                    return json to code
                 } catch (_: Exception) {
-                    JSONObject("""{"code":-1,"msg":"${plaintext.take(80)}"}""") to -1
+                    // 解析失败，继续尝试下一种格式
+                    continue
                 }
+            } catch (_: IOException) {
+                continue
             }
-        } catch (e: IOException) {
-            Log.e(TAG, "网络错误", e)
-            JSONObject("""{"code":-1,"msg":"网络错误: ${e.message}"}""") to -1
         }
+        return JSONObject("""{"code":-1,"msg":"所有格式均失败"}""") to -1
     }
 
     private fun errMsg(json: JSONObject): String = when (json.optInt("code", -1)) {
