@@ -1115,7 +1115,7 @@ class FloatService : Service() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun createNotificationChannel() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { val ch = NotificationChannel(CH_ID, "迅雷AI", NotificationManager.IMPORTANCE_LOW); (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch) } }
-    private fun buildNotification() = NotificationCompat.Builder(this, CH_ID).setContentTitle("迅雷AI").setContentText("运行中").setSmallIcon(R.mipmap.ic_launcher).build()
+    private fun buildNotification() = NotificationCompat.Builder(this, CH_ID).setContentTitle("迅雷AI").setContentText("运行中").setSmallIcon(android.R.drawable.ic_menu_view).build()
     private fun actualDisplayRotation(): Int = try { wm.defaultDisplay.rotation } catch (_: Exception) { Surface.ROTATION_0 }
 
     fun currentDisplayRotation(): Int {
