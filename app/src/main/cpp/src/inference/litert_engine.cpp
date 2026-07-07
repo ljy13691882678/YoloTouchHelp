@@ -17,7 +17,8 @@ float clampValue(float value, float lo, float hi) {
 }
 
 float maybeSigmoid(float value) {
-    if (value >= 0.0f && value <= 1.0f) return value;
+    // Allow small tolerance around [0,1] for INT8 quantization errors
+    if (value >= -0.02f && value <= 1.02f) return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
     if (value > -30.0f && value < 30.0f) return 1.0f / (1.0f + std::exp(-value));
     return value > 0.0f ? 1.0f : 0.0f;
 }
@@ -48,10 +49,17 @@ bool readOutputTensor(const TfLiteTensor* tensor, OutputTensorData& output) {
         const uint8_t* data = static_cast<const uint8_t*>(TfLiteTensorData(tensor));
         if (!data) return false;
         output.values.resize(byteSize);
+        float dqMin = 1e9f, dqMax = -1e9f;
+        double dqSum = 0.0;
         for (size_t i = 0; i < byteSize; ++i) {
             int raw = output.type == kTfLiteUInt8 ? data[i] : static_cast<int>(static_cast<int8_t>(data[i]));
             output.values[i] = (raw - q.zero_point) * q.scale;
+            if (output.values[i] < dqMin) dqMin = output.values[i];
+            if (output.values[i] > dqMax) dqMax = output.values[i];
+            dqSum += output.values[i];
         }
+        LOGD("readOutput: INT8 dequant, scale=%.6f zp=%d, %zu floats, min=%.4f max=%.4f mean=%.4f",
+             q.scale, (int)q.zero_point, byteSize, dqMin, dqMax, dqSum / byteSize);
         return true;
     }
     return false;
@@ -226,15 +234,20 @@ bool decodeYoloOutput(const float* out, int dim0, int dim1,
                       int screenWidth, int screenHeight, int inputWidth, int inputHeight,
                       int classCount, float scoreThreshold, std::vector<Detection>& detections) {
     if (looksLikeRawYoloOutput(dim0, dim1)) {
-        return decodeRawYoloOutput(out, dim0, dim1, offsetX, offsetY, regionWidth, regionHeight,
+        LOGD("decodeYolo: trying raw YOLO output (dim0=%d dim1=%d classCount=%d)", dim0, dim1, classCount);
+        bool ok = decodeRawYoloOutput(out, dim0, dim1, offsetX, offsetY, regionWidth, regionHeight,
                                    screenWidth, screenHeight, inputWidth, inputHeight,
                                    classCount, scoreThreshold, detections);
+        LOGD("decodeYolo: raw YOLO result=%d detections=%zu", ok, detections.size());
+        if (ok && !detections.empty()) return true;
     }
     if (decodeNmsOutput(out, dim0, dim1, offsetX, offsetY, regionWidth, regionHeight,
                         screenWidth, screenHeight, inputWidth, inputHeight,
                         classCount, scoreThreshold, detections) && !detections.empty()) {
+        LOGD("decodeYolo: NMS format succeeded, detections=%zu", detections.size());
         return true;
     }
+    LOGD("decodeYolo: falling back to raw YOLO (last attempt)");
     return decodeRawYoloOutput(out, dim0, dim1, offsetX, offsetY, regionWidth, regionHeight,
                                screenWidth, screenHeight, inputWidth, inputHeight,
                                classCount, scoreThreshold, detections);
@@ -465,6 +478,14 @@ bool LiteRtEngine::init(const char* model_path) {
                 m_input_width = dim2;
             }
             LOGD("Input: %s, H=%d, W=%d", m_input_nhwc ? "NHWC" : "NCHW", m_input_height, m_input_width);
+            TfLiteType inType = TfLiteTensorType(input_tensor);
+            const char* typeNames[] = {"FLOAT32","FLOAT16","INT32","UINT8","INT64","STRING","BOOL","INT16","COMPLEX64","INT8","FLOAT64"};
+            LOGD("Input type: %d (%s)", inType,
+                 (inType >= 0 && inType <= 10) ? typeNames[inType] : "UNKNOWN");
+            if (inType == kTfLiteInt8 || inType == kTfLiteUInt8) {
+                TfLiteQuantizationParams qp = TfLiteTensorQuantizationParams(input_tensor);
+                LOGD("Input quant: scale=%.6f zero_point=%d", qp.scale, qp.zero_point);
+            }
         }
     }
 
@@ -479,6 +500,14 @@ bool LiteRtEngine::init(const char* model_path) {
             if (m_num_classes < 1) m_num_classes = 1;
             LOGD("Output: dims=%d, channels=%d, num_outputs=%d, num_classes=%d",
                  ndim, channels, m_num_outputs, m_num_classes);
+            TfLiteType outType = TfLiteTensorType(out);
+            LOGD("Output type: %d (%s)", outType,
+                 (outType >= 0 && outType <= 10) ? 
+                 (const char*[]){"FLOAT32","FLOAT16","INT32","UINT8","INT64","STRING","BOOL","INT16","COMPLEX64","INT8","FLOAT64"}[outType] : "UNKNOWN");
+            if (outType == kTfLiteInt8 || outType == kTfLiteUInt8) {
+                TfLiteQuantizationParams qp = TfLiteTensorQuantizationParams(out);
+                LOGD("Output quant: scale=%.6f zero_point=%d", qp.scale, qp.zero_point);
+            }
         }
     }
 

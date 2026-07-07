@@ -256,6 +256,31 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
     }
     bool hasDFL = (reg_max_1 > 1);
 
+    // Auto-detect: are class scores already in [0,1] (post-sigmoid)?
+    // If all class scores are in [0,1] and no negative values, skip sigmoid
+    bool needSigmoid = false;
+    {
+        int sampleCount = std::min((int64_t)100, numAnchors);
+        for (int i = 0; i < sampleCount; i++) {
+            int sampleIdx = (i * numAnchors / sampleCount);
+            for (int c = 0; c < numClass; c++) {
+                float s;
+                if (transposed) {
+                    s = output[c * numAnchors + sampleIdx];
+                } else {
+                    s = output[sampleIdx * featureDim + reg_max_1 * 4 + c];
+                }
+                if (s < 0.0f || s > 1.0f) {
+                    needSigmoid = true;
+                    break;
+                }
+            }
+            if (needSigmoid) break;
+        }
+    }
+    ONNX_LOG("parseYoloV8: featureDim=%d numClass=%d reg_max=%d hasDFL=%d needSigmoid=%d",
+             featureDim, numClass, reg_max_1, (int)hasDFL, (int)needSigmoid);
+
     std::vector<int> strides = {8, 16, 32};
     int pred_row_offset = 0;
 
@@ -283,7 +308,7 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
                     label = c;
                 }
             }
-            score = sigmoid(score);
+            score = needSigmoid ? sigmoid(score) : score;
 
             if (score < m_conf_thresh) continue;
 
