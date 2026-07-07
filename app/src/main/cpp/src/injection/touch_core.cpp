@@ -806,3 +806,10 @@ bool touch_lift_joystick_finger(void) {
     if (lifted) upload();
     return lifted;
 }
+
+// -- Getter implementations ---------------------------------------------
+
+int touch_get_virtual_slot(void) { return g_virtual_slot; }
+int touch_get_virtual_id(void)   { return g_virtual_id; }
+int touch_get_trigger_slot(void) { return g_trigger_slot; }
+int touch_get_trigger_id(void)   { return g_trigger_id; }
