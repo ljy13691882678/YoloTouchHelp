@@ -498,7 +498,7 @@ class MainActivity : AppCompatActivity() {
                 when (which) {
                     0 -> exportLauncher.launch("aimbot_config.json")
                     1 -> importLauncher.launch(arrayOf("application/json"))
-                    2 -> modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "*/*"))
+                    2 -> modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "application/x-onnx", "*/*"))
                     3 -> showChangelogDialog()
                     4 -> openSettings()
                 }
@@ -1054,8 +1054,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun importModelFromUri(uri: Uri, displayName: String, inputSizeText: String, classesText: String) {
         val originalName = queryFileName(uri)
-        if (!originalName.endsWith(".tflite", ignoreCase = true)) {
-            Toast.makeText(this, "目前仅支持导入 .tflite 模型", Toast.LENGTH_SHORT).show()
+        if (!originalName.endsWith(".tflite", ignoreCase = true) && !originalName.endsWith(".onnx", ignoreCase = true)) {
+            Toast.makeText(this, "目前仅支持导入 .tflite / .onnx 模型", Toast.LENGTH_SHORT).show()
             return
         }
         try {
@@ -1126,8 +1126,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildImportedModelFilename(originalName: String): String {
+        val ext = if (originalName.endsWith(".onnx", ignoreCase = true)) ".onnx" else ".tflite"
         val base = originalName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "custom_model" }
-        return "${base}_${System.currentTimeMillis()}.tflite"
+        return "${base}_${System.currentTimeMillis()}${ext}"
     }
 
     private fun parseClassesText(text: String): Map<Int, String> {
@@ -1178,7 +1179,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun importModel() {
-            runOnUiThread { modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "*/*")) }
+            runOnUiThread { modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "application/x-onnx", "*/*")) }
         }
 
         @JavascriptInterface
@@ -1300,7 +1301,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun importModel() {
-            runOnUiThread { modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "*/*")) }
+            runOnUiThread { modelImportLauncher.launch(arrayOf("application/octet-stream", "application/x-tflite", "application/x-onnx", "*/*")) }
         }
 
         @JavascriptInterface

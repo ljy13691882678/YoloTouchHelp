@@ -7,6 +7,7 @@
 #include "ncnn_engine.h"
 #include "litert_engine.h"
 #include "mediatek_engine.h"
+#include "onnx_engine.h"
 
 static std::unique_ptr<InferenceEngine> g_engine;
 static float g_confidence = 0.25f;
@@ -31,6 +32,8 @@ Java_com_xunlei_ai_inference_JniCallBack_init(JNIEnv* env, jobject, jstring mode
 
     if (InferenceEngine::isNcnnModel(path)) {
         g_engine = std::make_unique<NcnnEngine>();
+    } else if (InferenceEngine::isOnnxModel(path)) {
+        g_engine = std::make_unique<OnnxEngine>();
     } else {
         if (!g_force_cpu) {
             // MediaTek path sits ahead of LiteRT on MTK devices. If unavailable, we

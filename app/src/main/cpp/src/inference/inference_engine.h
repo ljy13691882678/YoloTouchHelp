@@ -3,6 +3,14 @@
 #include "common.h"
 #include <string>
 
+enum class BackendType {
+    NCNN,
+    LITERT,
+    MEDIATEK,
+    ONNX,
+    UNKNOWN
+};
+
 class InferenceEngine {
 public:
     virtual ~InferenceEngine() = default;
@@ -32,6 +40,13 @@ public:
     static bool isNcnnModel(const char* model_path) {
         std::string path(model_path);
         return path.size() >= 6 && path.substr(path.size() - 6) == ".param";
+    }
+
+    static bool isOnnxModel(const char* model_path) {
+        std::string path(model_path);
+        size_t len = path.size();
+        return (len >= 5 && (path.substr(len - 5) == ".onnx" ||
+                             path.substr(len - 5) == ".ONNX"));
     }
 
 protected:

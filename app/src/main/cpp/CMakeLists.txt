@@ -28,6 +28,11 @@ add_library(tensorflowlite_gpu_jni SHARED IMPORTED)
 set_target_properties(tensorflowlite_gpu_jni PROPERTIES
     IMPORTED_LOCATION ${QNN_LIB_DIR}/libtensorflowlite_gpu_jni.so)
 
+# ONNX Runtime library
+add_library(onnxruntime SHARED IMPORTED)
+set_target_properties(onnxruntime PROPERTIES
+    IMPORTED_LOCATION ${QNN_LIB_DIR}/libonnxruntime.so)
+
 # Compile aimbot (JNI bridge + inference engines)
 add_library(aimbot SHARED
     src/inference/aimbot.cpp
@@ -36,6 +41,7 @@ add_library(aimbot SHARED
     src/inference/qnn_engine.cpp
     src/inference/mediatek_engine.cpp
     src/inference/lite_rt_api.cpp
+    src/inference/onnx_engine.cpp
 )
 
 # Shared touch core library
@@ -126,6 +132,7 @@ target_link_libraries(aimbot
         GenericCodeGen
         OpenMP::OpenMP_CXX
         Vulkan::Vulkan
+        onnxruntime
         android
         log)
 target_include_directories(aimbot PRIVATE ${NCNN_INCLUDE_DIR})
