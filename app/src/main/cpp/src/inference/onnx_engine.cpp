@@ -108,14 +108,19 @@ bool OnnxEngine::init(const char* model_path) {
         if (!m_outputShapes.empty()) {
             auto& outShape = m_outputShapes[0];
             if (outShape.size() >= 2) {
-                int64_t featureDim = outShape[outShape.size() - 1];
+                int64_t dim1 = outShape[outShape.size() - 2];
+                int64_t dim2 = outShape[outShape.size() - 1];
+                // featureDim = channels (the smaller dimension)
+                int64_t featureDim = (dim1 < dim2) ? dim1 : dim2;
 
-                // YOLOv8 format: [1, 84, 8400] → 84 = 4*reg_max + num_classes
-                const int reg_max_1 = 16;
-                if (featureDim > reg_max_1 * 4) {
-                    m_num_classes = featureDim - reg_max_1 * 4;
+                // YOLO format: [1, featureDim, numAnchors]
+                // featureDim = 4*reg_max + num_classes
+                // reg_max=16 → featureDim=64+N, reg_max=1 → featureDim=4+N
+                const int reg_max_hint = 16;
+                if (featureDim > reg_max_hint * 4) {
+                    m_num_classes = featureDim - reg_max_hint * 4;
                 } else if (featureDim > 4) {
-                    m_num_classes = featureDim - 4;
+                    m_num_classes = featureDim - 4;  // reg_max=1 (no DFL)
                 }
             }
         }
@@ -230,19 +235,26 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
     int featureDim, numAnchors;
     bool transposed = false;
 
-    const int reg_max_1 = 16;
-    if (dim1 > dim2) {
+    // featureDim = channels (smaller), numAnchors = anchors (larger)
+    if (dim1 < dim2) {
         featureDim = dim1;
         numAnchors = dim2;
-        transposed = false;
+        transposed = false;  // [1, featureDim, numAnchors]
     } else {
         featureDim = dim2;
         numAnchors = dim1;
-        transposed = true;
+        transposed = true;   // [1, numAnchors, featureDim]
     }
 
-    int numClass = featureDim - reg_max_1 * 4;
+    // Auto-detect number of classes and reg_max from featureDim
+    int numClass = m_num_classes;
     if (numClass < 1) numClass = 1;
+    const int reg_max_1 = (featureDim - numClass) / 4;
+    if (reg_max_1 < 1) {
+        ONNX_LOG("parseYoloV8: invalid reg_max=%d for featureDim=%d numClass=%d", reg_max_1, featureDim, numClass);
+        return detections;
+    }
+    bool hasDFL = (reg_max_1 > 1);
 
     std::vector<int> strides = {8, 16, 32};
     int pred_row_offset = 0;
@@ -275,18 +287,31 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
 
             if (score < m_conf_thresh) continue;
 
-            // DFL bbox decode
+            // Bbox decode
             float pred_ltrb[4] = {0, 0, 0, 0};
-            for (int k = 0; k < 4; k++) {
-                float dis_values[16];
-                for (int l = 0; l < reg_max_1; l++) {
-                    if (transposed) {
-                        dis_values[l] = output[(k * reg_max_1 + l) * numAnchors + row_idx];
-                    } else {
-                        dis_values[l] = output[row_idx * featureDim + k * reg_max_1 + l];
+            if (hasDFL) {
+                for (int k = 0; k < 4; k++) {
+                    float dis_values[16];
+                    for (int l = 0; l < reg_max_1; l++) {
+                        if (transposed) {
+                            dis_values[l] = output[(k * reg_max_1 + l) * numAnchors + row_idx];
+                        } else {
+                            dis_values[l] = output[row_idx * featureDim + k * reg_max_1 + l];
+                        }
                     }
+                    pred_ltrb[k] = softmaxCompute(dis_values, reg_max_1) * stride;
                 }
-                pred_ltrb[k] = softmaxCompute(dis_values, reg_max_1) * stride;
+            } else {
+                // No DFL (reg_max=1): raw bbox offsets
+                for (int k = 0; k < 4; k++) {
+                    float val;
+                    if (transposed) {
+                        val = output[k * numAnchors + row_idx];
+                    } else {
+                        val = output[row_idx * featureDim + k];
+                    }
+                    pred_ltrb[k] = val * stride;
+                }
             }
 
             int grid_x = i % num_grid_x;
