@@ -12,6 +12,12 @@ struct OutputTensorData {
     TfLiteType type = kTfLiteNoType;
 };
 
+// TFLite type name lookup
+static const char* getTfLiteTypeName(TfLiteType type) {
+    static const char* names[] = {"FLOAT32","FLOAT16","INT32","UINT8","INT64","STRING","BOOL","INT16","COMPLEX64","INT8","FLOAT64"};
+    return (type >= 0 && type <= 10) ? names[type] : "UNKNOWN";
+}
+
 float clampValue(float value, float lo, float hi) {
     return std::max(lo, std::min(value, hi));
 }
@@ -479,9 +485,7 @@ bool LiteRtEngine::init(const char* model_path) {
             }
             LOGD("Input: %s, H=%d, W=%d", m_input_nhwc ? "NHWC" : "NCHW", m_input_height, m_input_width);
             TfLiteType inType = TfLiteTensorType(input_tensor);
-            const char* typeNames[] = {"FLOAT32","FLOAT16","INT32","UINT8","INT64","STRING","BOOL","INT16","COMPLEX64","INT8","FLOAT64"};
-            LOGD("Input type: %d (%s)", inType,
-                 (inType >= 0 && inType <= 10) ? typeNames[inType] : "UNKNOWN");
+            LOGD("Input type: %d (%s)", inType, getTfLiteTypeName(inType));
             if (inType == kTfLiteInt8 || inType == kTfLiteUInt8) {
                 TfLiteQuantizationParams qp = TfLiteTensorQuantizationParams(input_tensor);
                 LOGD("Input quant: scale=%.6f zero_point=%d", qp.scale, qp.zero_point);
@@ -501,9 +505,7 @@ bool LiteRtEngine::init(const char* model_path) {
             LOGD("Output: dims=%d, channels=%d, num_outputs=%d, num_classes=%d",
                  ndim, channels, m_num_outputs, m_num_classes);
             TfLiteType outType = TfLiteTensorType(out);
-            LOGD("Output type: %d (%s)", outType,
-                 (outType >= 0 && outType <= 10) ? 
-                 (const char*[]){"FLOAT32","FLOAT16","INT32","UINT8","INT64","STRING","BOOL","INT16","COMPLEX64","INT8","FLOAT64"}[outType] : "UNKNOWN");
+            LOGD("Output type: %d (%s)", outType, getTfLiteTypeName(outType));
             if (outType == kTfLiteInt8 || outType == kTfLiteUInt8) {
                 TfLiteQuantizationParams qp = TfLiteTensorQuantizationParams(out);
                 LOGD("Output quant: scale=%.6f zero_point=%d", qp.scale, qp.zero_point);
