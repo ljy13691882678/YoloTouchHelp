@@ -87,14 +87,22 @@ class AimController(
         } else dets
 
         // ========== COMMITMENT PHASE ==========
-        // Check if we have an active commitment (打完一个再切下一个)
+        // 锁定目标后，直到目标消失才切换下一个
         val committedId = aimingState.committedTrackId
-        if (committedId >= 0) {
-            // Look for the committed target in current detections
-            val committedTarget = candidates.firstOrNull { it.trackId == committedId }
+        val committedBox = aimingState.committedBox
+        if (committedId >= 0 || committedBox != null) {
+            // 优先用 trackId 匹配，回退到框匹配
+            var committedTarget: DetectionInfo? = null
+            if (committedId >= 0) {
+                committedTarget = candidates.firstOrNull { it.trackId == committedId }
+            }
+            if (committedTarget == null && committedBox != null) {
+                // trackId 匹配失败，用框匹配回退
+                committedTarget = matchCommittedBox(candidates, committedBox)
+            }
 
             if (committedTarget != null && committedTarget.missedFrames <= 0) {
-                // Target still present — stick with it regardless of distance
+                // 目标仍在画面中 — 保持锁定，无论距离多远
                 aimingState.committedMissingFrames = 0
                 aimingState.commitFrameCount++
                 var (aimX, aimY) = computeAimPoint(committedTarget)
@@ -107,17 +115,21 @@ class AimController(
                 aimingState.lastTargetY = aimY
                 aimingState.lockedMissedFrames = 0
                 updateLockedTarget(committedTarget)
+                // 更新 committedBox 以跟踪目标移动
+                aimingState.committedBox = RectF(committedTarget.rect)
+                if (committedTarget.trackId >= 0) {
+                    aimingState.committedTrackId = committedTarget.trackId
+                }
                 return AimSolution(committedTarget, aimX, aimY, false)
             } else {
-                // Target missing this frame — count missing frames
+                // 目标消失 — 计数确认
                 aimingState.committedMissingFrames++
                 val killFrames = aimingState.commitKillConfirmFrames.coerceIn(3, 60)
                 if (aimingState.committedMissingFrames > killFrames) {
-                    // Target confirmed killed — clear commitment, allow new selection
-                    Log.d(TAG, "commit: target $committedId missing ${aimingState.committedMissingFrames} frames, confirmed killed")
+                    Log.d(TAG, "commit: target missing ${aimingState.committedMissingFrames} frames, confirmed killed, switching to next")
                     clearCommitment()
                 } else {
-                    // Grace period — use last known position if still within lost tolerance
+                    // 宽限期 — 使用最后已知位置
                     val hasLock = aimingState.lockedTrackId >= 0 || aimingState.lockedTarget != null
                     if (hasLock && !aimingState.lastTargetX.isNaN() && !aimingState.lastTargetY.isNaN() &&
                         aimingState.lockedMissedFrames < targetLostTolerance.coerceIn(0, 10)) {
@@ -134,9 +146,10 @@ class AimController(
         }
 
         // ========== NORMAL SELECTION PHASE ==========
+        // 优先选择距离准星最近的目标
         val target = selectRawTarget(candidates, cx, cy)
         if (target != null && target.missedFrames <= 0) {
-            // Commit to this target
+            // 锁定到该目标
             commitToTarget(target)
             var (aimX, aimY) = computeAimPoint(target)
             updatePredictionState(target, aimX, aimY)
@@ -169,19 +182,24 @@ class AimController(
     }
 
     private fun commitToTarget(target: DetectionInfo) {
-        if (target.trackId < 0) return  // Only commit tracked targets
-        // Don't re-commit if already committed to this target
-        if (aimingState.committedTrackId == target.trackId) return
-        aimingState.committedTrackId = target.trackId
+        // 如果已经有承诺目标且相同，只需更新 committedBox
+        if (aimingState.committedTrackId == target.trackId && target.trackId >= 0) {
+            aimingState.committedBox = RectF(target.rect)
+            return
+        }
+        // 即使用 trackId 不可用，也用框来承诺
+        aimingState.committedTrackId = if (target.trackId >= 0) target.trackId else -1
         aimingState.committedClassId = target.classId
+        aimingState.committedBox = RectF(target.rect)
         aimingState.committedMissingFrames = 0
         aimingState.commitFrameCount = 0
-        Log.d(TAG, "commit: NEW target trackId=${target.trackId} classId=${target.classId}")
+        Log.d(TAG, "commit: NEW target trackId=${target.trackId} classId=${target.classId} box=${target.rect}")
     }
 
     private fun clearCommitment() {
         aimingState.committedTrackId = -1
         aimingState.committedClassId = -1
+        aimingState.committedBox = null
         aimingState.committedMissingFrames = 0
         aimingState.commitFrameCount = 0
     }
@@ -244,6 +262,35 @@ class AimController(
             }
         }
         return if (bestScore >= lockBoxThreshold.coerceIn(0f, 1f)) bestDet else null
+    }
+
+    // 回退框匹配：当 trackId 不可用时，用 IoU 匹配承诺目标
+    private fun matchCommittedBox(candidates: List<DetectionInfo>, committedRect: RectF): DetectionInfo? {
+        var bestDet: DetectionInfo? = null
+        var bestIou = 0f
+        for (det in candidates) {
+            if (det.classId != aimingState.committedClassId) continue
+            val iou = computeIoU(committedRect, det.rect)
+            if (iou > bestIou) {
+                bestIou = iou
+                bestDet = det
+            }
+        }
+        // 承诺框匹配阈值稍低，因为目标可能快速移动
+        return if (bestIou >= 0.15f && bestDet != null) bestDet else null
+    }
+
+    private fun computeIoU(a: RectF, b: RectF): Float {
+        val interLeft = maxOf(a.left, b.left)
+        val interTop = maxOf(a.top, b.top)
+        val interRight = minOf(a.right, b.right)
+        val interBottom = minOf(a.bottom, b.bottom)
+        val interW = maxOf(0f, interRight - interLeft)
+        val interH = maxOf(0f, interBottom - interTop)
+        val interArea = interW * interH
+        val areaA = maxOf(1f, a.width() * a.height())
+        val areaB = maxOf(1f, b.width() * b.height())
+        return interArea / maxOf(1f, areaA + areaB - interArea)
     }
 
     private fun lockedBoxScore(lockedRect: RectF, rect: RectF): Float {

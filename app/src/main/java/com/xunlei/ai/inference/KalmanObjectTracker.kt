@@ -140,19 +140,6 @@ class KalmanObjectTracker {
             if (detectionToTrack[detIndex] >= 0) return@forEachIndexed
             val width = rectWidth(detection.rect)
             val height = rectHeight(detection.rect)
-            val newTrack = TrackedObject(
-                id = nextTrackId++,
-                label = detection.classId,
-                className = detection.className,
-                score = detection.score,
-                lastUpdateMs = nowMs,
-                box = RectF(detection.rect),
-                width = width,
-                height = height
-            ).apply {
-                state[0] = centerX(detection.rect)
-                state[1] = centerY(detection.rect)
-            }
             trackedObjects += TrackedObject(
                 id = nextTrackId++,
                 label = detection.classId,

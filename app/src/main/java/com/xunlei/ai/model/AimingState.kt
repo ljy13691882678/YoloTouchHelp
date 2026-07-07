@@ -29,9 +29,10 @@ data class AimingState(
     var prevTargetY: Float = Float.NaN,
     var smoothVelX: Float = 0f,
     var smoothVelY: Float = 0f,
-    // Commitment: 打完一个再切下一个的核心状态
+    // Commitment: 锁定目标直到消失再切换下一个
     var committedTrackId: Int = -1,
     var committedClassId: Int = -1,
+    var committedBox: RectF? = null,          // 承诺目标的框(用于trackId不可用时的回退匹配)
     var committedMissingFrames: Int = 0,
     var commitKillConfirmFrames: Int = 12,   // 目标消失N帧后认为已击杀
     var commitMinHoldFrames: Int = 3,        // 最少锁定帧数后才算正式commit
@@ -65,6 +66,7 @@ data class AimingState(
         // Reset commitment
         committedTrackId = -1
         committedClassId = -1
+        committedBox = null
         committedMissingFrames = 0
         commitFrameCount = 0
     }
