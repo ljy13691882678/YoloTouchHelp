@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstring>
 #include <algorithm>
-#include <numeric>
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -20,13 +19,10 @@ OnnxEngine::~OnnxEngine() {
     release();
 }
 
-bool OnnxEngine::init(const char* modelPath, int imgWidth, int imgHeight,
-                      int cpuThreads, bool useGpu) {
+bool OnnxEngine::init(const char* model_path) {
     release();
 
-    m_inputWidth = imgWidth;
-    m_inputHeight = imgHeight;
-    m_modelPath = modelPath;
+    m_modelPath = model_path;
 
     try {
         // Create ONNX Runtime environment
@@ -35,33 +31,24 @@ bool OnnxEngine::init(const char* modelPath, int imgWidth, int imgHeight,
         // Configure session options
         Ort::SessionOptions sessionOptions;
 
-        // Set CPU threads
-        if (cpuThreads > 0) {
-            sessionOptions.SetIntraOpNumThreads(cpuThreads);
+        // Set CPU threads from base class
+        if (m_cpu_threads > 0) {
+            sessionOptions.SetIntraOpNumThreads(m_cpu_threads);
+        } else {
+            sessionOptions.SetIntraOpNumThreads(4);
         }
 
-        // Set execution mode to parallel
+        // Set execution mode
         sessionOptions.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
 
-        // Graph optimization level
+        // Graph optimization
         sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
 
-        // Try GPU providers if requested
-        if (useGpu) {
-            // Try XNNPACK (CPU optimization for ARM — widely available)
-            try {
-                Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_XNNPACK(sessionOptions));
-                ONNX_LOG("XNNPACK provider enabled");
-            } catch (const std::exception& e) {
-                ONNX_LOG("XNNPACK not available: %s", e.what());
-            }
-        }
-
-        // Disable memory pattern optimization for better memory usage on mobile
+        // Disable memory pattern for mobile
         sessionOptions.DisableMemPattern();
 
         // Create session
-        m_session = std::make_unique<Ort::Session>(*m_env, modelPath, sessionOptions);
+        m_session = std::make_unique<Ort::Session>(*m_env, model_path, sessionOptions);
 
         // Create memory info
         m_memoryInfo = std::make_unique<Ort::MemoryInfo>(
@@ -75,14 +62,23 @@ bool OnnxEngine::init(const char* modelPath, int imgWidth, int imgHeight,
         ONNX_LOG("Model: %zu inputs, %zu outputs", numInputNodes, numOutputNodes);
 
         m_inputNames.clear();
-        m_inputShapes.clear();
         for (size_t i = 0; i < numInputNodes; i++) {
             auto name = m_session->GetInputNameAllocated(i, allocator);
             m_inputNames.push_back(strdup(name.get()));
             auto typeInfo = m_session->GetInputTypeInfo(i);
             auto tensorInfo = typeInfo.GetTensorTypeAndShapeInfo();
             auto shape = tensorInfo.GetShape();
-            m_inputShapes.push_back(shape);
+
+            // Auto-detect input size from model
+            if (shape.size() >= 4) {
+                // Usually NCHW: [1, 3, H, W]
+                int64_t h = shape[shape.size() - 2];
+                int64_t w = shape[shape.size() - 1];
+                if (h > 0 && w > 0 && h <= 4096 && w <= 4096) {
+                    m_input_width = static_cast<int>(w);
+                    m_input_height = static_cast<int>(h);
+                }
+            }
 
             ONNX_LOG("  Input[%zu] '%s': shape=[", i, m_inputNames[i]);
             for (size_t j = 0; j < shape.size(); j++) {
@@ -113,32 +109,24 @@ bool OnnxEngine::init(const char* modelPath, int imgWidth, int imgHeight,
             auto& outShape = m_outputShapes[0];
             if (outShape.size() >= 2) {
                 int64_t featureDim = outShape[outShape.size() - 1];
-                int64_t numAnchors = outShape[outShape.size() - 2];
 
-                // YOLOv8 format: [1, 84, 8400] → 84 = 4 bbox + 80 classes
-                // YOLOv11 format: similar
-                // For [1, 84, 8400]: outShape[1] = 84, outShape[2] = 8400
+                // YOLOv8 format: [1, 84, 8400] → 84 = 4*reg_max + num_classes
                 const int reg_max_1 = 16;
                 if (featureDim > reg_max_1 * 4) {
-                    m_numClasses = featureDim - reg_max_1 * 4;
+                    m_num_classes = featureDim - reg_max_1 * 4;
                 } else if (featureDim > 4) {
-                    m_numClasses = featureDim - 4;
-                } else {
-                    m_numClasses = 1;
+                    m_num_classes = featureDim - 4;
                 }
             }
         }
-
-        if (m_numClasses <= 0) m_numClasses = 1;
+        if (m_num_classes <= 0) m_num_classes = 1;
 
         // Pre-allocate preprocessing buffer
-        m_preprocessBuffer.resize(m_inputWidth * m_inputHeight * 3);
-        m_inputBuffer.resize(m_inputWidth * m_inputHeight * 3 * sizeof(float));
+        m_preprocessBuffer.resize(m_input_width * m_input_height * 3);
 
         m_initialized = true;
-        ONNX_LOG("ONNX initialized OK: %s, input=%dx%d, %d classes, %zu threads",
-                 modelPath, m_inputWidth, m_inputHeight, m_numClasses,
-                 cpuThreads);
+        ONNX_LOG("ONNX ready: %s, input=%dx%d, %d classes, %d threads",
+                 model_path, m_input_width, m_input_height, m_num_classes, m_cpu_threads);
         return true;
     } catch (const std::exception& e) {
         ONNX_ERR("ONNX init failed: %s", e.what());
@@ -148,7 +136,6 @@ bool OnnxEngine::init(const char* modelPath, int imgWidth, int imgHeight,
 }
 
 void OnnxEngine::release() {
-    // Free input/output name strings
     for (auto& name : m_inputNames) {
         if (name) free(const_cast<char*>(name));
     }
@@ -164,51 +151,52 @@ void OnnxEngine::release() {
     m_initialized = false;
 }
 
-void OnnxEngine::preprocess(const uint8_t* rgbaData, int srcWidth, int srcHeight,
+void OnnxEngine::preprocess(const uint8_t* rgbaData,
+                            int offsetX, int offsetY,
+                            int regionWidth, int regionHeight,
+                            int screenWidth, int screenHeight,
+                            int rowStride, int pixelStride,
                             float* inputTensor) {
-    // RGBA → RGB, resize via bilinear interpolation, normalize to [0,1]
-    int dstW = m_inputWidth;
-    int dstH = m_inputHeight;
+    int dstW = m_input_width;
+    int dstH = m_input_height;
 
-    float scaleX = (float)srcWidth / dstW;
-    float scaleY = (float)srcHeight / dstH;
+    float scaleX = (float)regionWidth / dstW;
+    float scaleY = (float)regionHeight / dstH;
 
     for (int dy = 0; dy < dstH; dy++) {
         for (int dx = 0; dx < dstW; dx++) {
             // Source coordinate (center-aligned)
-            float sx = (dx + 0.5f) * scaleX - 0.5f;
-            float sy = (dy + 0.5f) * scaleY - 0.5f;
+            float sx = (dx + 0.5f) * scaleX - 0.5f + offsetX;
+            float sy = (dy + 0.5f) * scaleY - 0.5f + offsetY;
 
             int x0 = (int)std::floor(sx);
             int y0 = (int)std::floor(sy);
             int x1 = x0 + 1;
             int y1 = y0 + 1;
 
-            x0 = std::max(0, std::min(x0, srcWidth - 1));
-            y0 = std::max(0, std::min(y0, srcHeight - 1));
-            x1 = std::max(0, std::min(x1, srcWidth - 1));
-            y1 = std::max(0, std::min(y1, srcHeight - 1));
+            x0 = std::max(0, std::min(x0, screenWidth - 1));
+            y0 = std::max(0, std::min(y0, screenHeight - 1));
+            x1 = std::max(0, std::min(x1, screenWidth - 1));
+            y1 = std::max(0, std::min(y1, screenHeight - 1));
 
             float wx1 = sx - x0;
             float wy1 = sy - y0;
             float wx0 = 1.0f - wx1;
             float wy0 = 1.0f - wy1;
 
-            // Bilinear interpolation for each channel
             for (int c = 0; c < 3; c++) {
-                float val = wx0 * wy0 * rgbaData[(y0 * srcWidth + x0) * 4 + c] +
-                            wx1 * wy0 * rgbaData[(y0 * srcWidth + x1) * 4 + c] +
-                            wx0 * wy1 * rgbaData[(y1 * srcWidth + x0) * 4 + c] +
-                            wx1 * wy1 * rgbaData[(y1 * srcWidth + x1) * 4 + c];
-                // Normalize to [0, 1]
+                float val = wx0 * wy0 * rgbaData[(y0 * rowStride) + x0 * pixelStride + c] +
+                            wx1 * wy0 * rgbaData[(y0 * rowStride) + x1 * pixelStride + c] +
+                            wx0 * wy1 * rgbaData[(y1 * rowStride) + x0 * pixelStride + c] +
+                            wx1 * wy1 * rgbaData[(y1 * rowStride) + x1 * pixelStride + c];
+                // NCHW layout: [C, H, W]
                 inputTensor[c * dstH * dstW + dy * dstW + dx] = val / 255.0f;
             }
         }
     }
 }
 
-// Softmax for DFL
-static inline float softmax_compute(const float* src, int n) {
+float OnnxEngine::softmaxCompute(const float* src, int n) {
     float max_val = -1e9f;
     for (int i = 0; i < n; i++) {
         if (src[i] > max_val) max_val = src[i];
@@ -225,19 +213,13 @@ static inline float softmax_compute(const float* src, int n) {
     return result;
 }
 
-static inline float sigmoidFn(float x) {
-    return 1.0f / (1.0f + expf(-x));
-}
-
-std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
+std::vector<Detection> OnnxEngine::parseYoloV8Output(
     const float* output, const std::vector<int64_t>& shape,
     int imgWidth, int imgHeight) {
-    std::vector<DetectionResult> detections;
+    std::vector<Detection> detections;
 
     if (shape.size() < 2) return detections;
 
-    // Shape is typically [1, feature_dim, num_anchors] or [1, num_anchors, feature_dim]
-    // Try to detect which layout
     int64_t dim1 = shape[1];
     int64_t dim2 = shape[2];
 
@@ -246,12 +228,10 @@ std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
 
     const int reg_max_1 = 16;
     if (dim1 > dim2) {
-        // [1, feature_dim, num_anchors] like [1, 84, 8400]
         featureDim = dim1;
         numAnchors = dim2;
         transposed = false;
     } else {
-        // [1, num_anchors, feature_dim]
         featureDim = dim2;
         numAnchors = dim1;
         transposed = true;
@@ -287,14 +267,14 @@ std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
                     label = c;
                 }
             }
-            score = sigmoidFn(score);
+            score = sigmoid(score);
 
-            if (score < m_confThreshold) continue;
+            if (score < m_conf_thresh) continue;
 
             // DFL bbox decode
             float pred_ltrb[4] = {0, 0, 0, 0};
             for (int k = 0; k < 4; k++) {
-                float dis_values[reg_max_1];
+                float dis_values[16];
                 for (int l = 0; l < reg_max_1; l++) {
                     if (transposed) {
                         dis_values[l] = output[(k * reg_max_1 + l) * numAnchors + row_idx];
@@ -302,7 +282,7 @@ std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
                         dis_values[l] = output[row_idx * featureDim + k * reg_max_1 + l];
                     }
                 }
-                pred_ltrb[k] = softmax_compute(dis_values, reg_max_1) * stride;
+                pred_ltrb[k] = softmaxCompute(dis_values, reg_max_1) * stride;
             }
 
             int grid_x = i % num_grid_x;
@@ -325,11 +305,7 @@ std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
 
             if (x1 <= x0 || y1 <= y0) continue;
 
-            detections.push_back({
-                x0, y0, x1, y1,
-                score,
-                (float)label
-            });
+            detections.push_back({x0, y0, x1, y1, score, (float)label});
         }
         pred_row_offset += num_grid;
     }
@@ -337,11 +313,11 @@ std::vector<DetectionResult> OnnxEngine::parseYoloV8Output(
     return detections;
 }
 
-std::vector<DetectionResult> OnnxEngine::parseMultiOutput(
+std::vector<Detection> OnnxEngine::parseMultiOutput(
     const std::vector<float*>& outputs,
     const std::vector<std::vector<int64_t>>& shapes,
     int imgWidth, int imgHeight) {
-    std::vector<DetectionResult> detections;
+    std::vector<Detection> detections;
 
     for (size_t o = 0; o < outputs.size(); o++) {
         const float* output = outputs[o];
@@ -349,7 +325,6 @@ std::vector<DetectionResult> OnnxEngine::parseMultiOutput(
 
         if (shape.size() < 3) continue;
 
-        int64_t batch = shape[0];
         int64_t channels = shape[1];
         int64_t gridH = shape[2];
         int64_t gridW = (shape.size() >= 4) ? shape[3] : 1;
@@ -364,18 +339,17 @@ std::vector<DetectionResult> OnnxEngine::parseMultiOutput(
                 int64_t anchorIdx = gy * gridW + gx;
                 const float* row = output + anchorIdx * channels;
 
-                // Find max class score
                 float maxScore = -1e9f;
                 int classId = 0;
                 for (int c = 0; c < numClass; c++) {
-                    float s = sigmoidFn(row[4 + c]);
+                    float s = sigmoid(row[4 + c]);
                     if (s > maxScore) { maxScore = s; classId = c; }
                 }
 
-                if (maxScore < m_confThreshold) continue;
+                if (maxScore < m_conf_thresh) continue;
 
-                float cx = sigmoidFn(row[0]);
-                float cy = sigmoidFn(row[1]);
+                float cx = sigmoid(row[0]);
+                float cy = sigmoid(row[1]);
                 float bw = expf(row[2]);
                 float bh = expf(row[3]);
 
@@ -396,11 +370,7 @@ std::vector<DetectionResult> OnnxEngine::parseMultiOutput(
 
                 if (x1 <= x0 || y1 <= y0) continue;
 
-                detections.push_back({
-                    x0, y0, x1, y1,
-                    maxScore,
-                    (float)classId
-                });
+                detections.push_back({x0, y0, x1, y1, maxScore, (float)classId});
             }
         }
     }
@@ -408,59 +378,24 @@ std::vector<DetectionResult> OnnxEngine::parseMultiOutput(
     return detections;
 }
 
-void OnnxEngine::nms(std::vector<DetectionResult>& detections, float iouThreshold) {
-    // Sort by confidence descending
-    std::sort(detections.begin(), detections.end(),
-              [](const DetectionResult& a, const DetectionResult& b) {
-                  return a.confidence > b.confidence;
-              });
+std::vector<Detection> OnnxEngine::detect(
+    uint8_t* src,
+    int offsetX, int offsetY,
+    int regionWidth, int regionHeight,
+    int screenWidth, int screenHeight,
+    int rowStride, int pixelStride) {
 
-    std::vector<bool> keep(detections.size(), true);
-
-    for (size_t i = 0; i < detections.size(); i++) {
-        if (!keep[i]) continue;
-        for (size_t j = i + 1; j < detections.size(); j++) {
-            if (!keep[j]) continue;
-            if (detections[i].classId != detections[j].classId) continue;
-
-            float xi1 = std::max(detections[i].x1, detections[j].x1);
-            float yi1 = std::max(detections[i].y1, detections[j].y1);
-            float xi2 = std::min(detections[i].x2, detections[j].x2);
-            float yi2 = std::min(detections[i].y2, detections[j].y2);
-            float interW = std::max(0.0f, xi2 - xi1);
-            float interH = std::max(0.0f, yi2 - yi1);
-            float interArea = interW * interH;
-
-            float areaI = (detections[i].x2 - detections[i].x1) * (detections[i].y2 - detections[i].y1);
-            float areaJ = (detections[j].x2 - detections[j].x1) * (detections[j].y2 - detections[j].y1);
-            float unionArea = areaI + areaJ - interArea;
-
-            if (unionArea > 0 && interArea / unionArea > iouThreshold) {
-                keep[j] = false;
-            }
-        }
-    }
-
-    std::vector<DetectionResult> filtered;
-    for (size_t i = 0; i < detections.size(); i++) {
-        if (keep[i]) filtered.push_back(detections[i]);
-    }
-    detections = std::move(filtered);
-}
-
-bool OnnxEngine::detect(const uint8_t* rgbaData, int width, int height,
-                        std::vector<DetectionResult>& results) {
-    results.clear();
-    if (!m_initialized || !m_session) return false;
+    if (!m_initialized || !m_session) return {};
 
     try {
         // Preprocess
-        preprocess(rgbaData, width, height, m_preprocessBuffer.data());
+        preprocess(src, offsetX, offsetY, regionWidth, regionHeight,
+                   screenWidth, screenHeight, rowStride, pixelStride,
+                   m_preprocessBuffer.data());
 
-        // Create input tensor
-        std::vector<int64_t> inputShape = {1, 3, m_inputHeight, m_inputWidth};
-        size_t inputSize = m_inputWidth * m_inputHeight * 3;
-        std::memcpy(m_inputBuffer.data(), m_preprocessBuffer.data(), inputSize * sizeof(float));
+        // Create input tensor (NCHW: [1, 3, H, W])
+        std::vector<int64_t> inputShape = {1, 3, m_input_height, m_input_width};
+        size_t inputSize = m_input_width * m_input_height * 3;
 
         Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
             *m_memoryInfo, m_preprocessBuffer.data(), inputSize,
@@ -475,21 +410,19 @@ bool OnnxEngine::detect(const uint8_t* rgbaData, int width, int height,
             m_outputNames.data(), m_outputNames.size());
 
         long long t2 = getTimeUs();
-        ONNX_LOG("ONNX Inference: %lld us", t2 - t1);
+        ONNX_LOG("ONNX inference: %lld us", t2 - t1);
 
         // Process outputs
+        std::vector<Detection> rawDetections;
+
         if (m_outputNames.size() == 1) {
-            // Single output (YOLOv8/v11 format)
             auto& outTensor = outputTensors.front();
             auto typeInfo = outTensor.GetTensorTypeAndShapeInfo();
             auto shape = typeInfo.GetShape();
             const float* outputData = outTensor.GetTensorData<float>();
 
-            auto rawDetections = parseYoloV8Output(outputData, shape, m_inputWidth, m_inputHeight);
-            nms(rawDetections, 0.45f);
-            results = std::move(rawDetections);
+            rawDetections = parseYoloV8Output(outputData, shape, m_input_width, m_input_height);
         } else {
-            // Multi-output (3 scales)
             std::vector<float*> outputs;
             std::vector<std::vector<int64_t>> shapes;
             for (auto& outTensor : outputTensors) {
@@ -497,28 +430,16 @@ bool OnnxEngine::detect(const uint8_t* rgbaData, int width, int height,
                 shapes.push_back(typeInfo.GetShape());
                 outputs.push_back(outTensor.GetTensorMutableData<float>());
             }
-            auto rawDetections = parseMultiOutput(outputs, shapes, m_inputWidth, m_inputHeight);
-            nms(rawDetections, 0.45f);
-            results = std::move(rawDetections);
+            rawDetections = parseMultiOutput(outputs, shapes, m_input_width, m_input_height);
         }
 
-        ONNX_LOG("Detections: %zu raw → %zu after NMS", results.size(), results.size());
-        return true;
+        // Apply NMS (from common.h)
+        std::vector<Detection> results = nms(rawDetections, 0.45f);
+
+        ONNX_LOG("Detections: %zu raw → %zu after NMS", rawDetections.size(), results.size());
+        return results;
     } catch (const std::exception& e) {
         ONNX_ERR("ONNX detect failed: %s", e.what());
-        return false;
+        return {};
     }
-}
-
-std::vector<DetectionResult> OnnxEngine::decodeOutput(
-    const float* output, int numAnchors, int numClasses,
-    int imgWidth, int imgHeight, float confThreshold) {
-    // Not used internally — kept for compatibility
-    return {};
-}
-
-void OnnxEngine::postprocess(const float* outputData, const std::vector<int64_t>& outputShape,
-                             int srcWidth, int srcHeight,
-                             std::vector<DetectionResult>& results) {
-    // Not used internally — kept for compatibility
 }

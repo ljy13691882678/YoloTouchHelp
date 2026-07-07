@@ -11,42 +11,42 @@ public:
     OnnxEngine();
     ~OnnxEngine() override;
 
-    bool init(const char* modelPath, int imgWidth, int imgHeight,
-              int cpuThreads, bool useGpu) override;
-    bool detect(const uint8_t* rgbaData, int width, int height,
-                std::vector<DetectionResult>& results) override;
+    bool init(const char* model_path) override;
     void release() override;
-    BackendType getBackendType() const override { return BackendType::ONNX; }
+
+    std::vector<Detection> detect(
+        uint8_t* src,
+        int offsetX, int offsetY,
+        int regionWidth, int regionHeight,
+        int screenWidth, int screenHeight,
+        int rowStride, int pixelStride
+    ) override;
+
+    std::string getBackendType() const override { return "ONNX"; }
     bool isInitialized() const override { return m_initialized; }
 
 private:
-    // Preprocess: RGBA → model input tensor
-    void preprocess(const uint8_t* rgbaData, int srcWidth, int srcHeight,
+    // Preprocess: crop + resize RGBA → RGB float [0,1]
+    void preprocess(const uint8_t* rgbaData,
+                    int offsetX, int offsetY,
+                    int regionWidth, int regionHeight,
+                    int screenWidth, int screenHeight,
+                    int rowStride, int pixelStride,
                     float* inputTensor);
 
-    // Postprocess: parse YOLO output
-    void postprocess(const float* outputData, const std::vector<int64_t>& outputShape,
-                     int srcWidth, int srcHeight,
-                     std::vector<DetectionResult>& results);
-
-    // NMS
-    static void nms(std::vector<DetectionResult>& detections, float iouThreshold);
-
-    // YOLO decode
-    static std::vector<DetectionResult> decodeOutput(
-        const float* output, int numAnchors, int numClasses,
-        int imgWidth, int imgHeight, float confThreshold);
-
-    // Parse YOLOv8/v11 output (single tensor [1, 84, 8400] or similar)
-    std::vector<DetectionResult> parseYoloV8Output(
+    // Parse YOLOv8/v11 single output [1, featureDim, numAnchors]
+    std::vector<Detection> parseYoloV8Output(
         const float* output, const std::vector<int64_t>& shape,
         int imgWidth, int imgHeight);
 
-    // Parse multi-output YOLO format (3 outputs at different scales)
-    std::vector<DetectionResult> parseMultiOutput(
+    // Parse multi-output YOLO format (3 scales)
+    std::vector<Detection> parseMultiOutput(
         const std::vector<float*>& outputs,
         const std::vector<std::vector<int64_t>>& shapes,
         int imgWidth, int imgHeight);
+
+    // DFL softmax helper
+    static float softmaxCompute(const float* src, int n);
 
     std::unique_ptr<Ort::Env> m_env;
     std::unique_ptr<Ort::Session> m_session;
@@ -54,18 +54,13 @@ private:
     Ort::SessionOptions m_sessionOptions{nullptr};
 
     std::string m_modelPath;
-    int m_inputWidth = 0;
-    int m_inputHeight = 0;
-    int m_numClasses = 0;
     bool m_initialized = false;
 
     // Input/output node names
     std::vector<const char*> m_inputNames;
     std::vector<const char*> m_outputNames;
-    std::vector<std::vector<int64_t>> m_inputShapes;
     std::vector<std::vector<int64_t>> m_outputShapes;
 
     // Pre-allocated buffer
     std::vector<float> m_preprocessBuffer;
-    std::vector<uint8_t> m_inputBuffer;
 };
