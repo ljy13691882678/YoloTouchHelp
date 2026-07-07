@@ -260,7 +260,7 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
     // If all class scores are in [0,1] and no negative values, skip sigmoid
     bool needSigmoid = false;
     {
-        int sampleCount = std::min((int64_t)100, numAnchors);
+        int sampleCount = (numAnchors < 100) ? numAnchors : 100;
         for (int i = 0; i < sampleCount; i++) {
             int sampleIdx = (i * numAnchors / sampleCount);
             for (int c = 0; c < numClass; c++) {
