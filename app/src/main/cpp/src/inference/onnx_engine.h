@@ -39,6 +39,11 @@ private:
         const float* output, const std::vector<int64_t>& shape,
         int imgWidth, int imgHeight);
 
+    // Parse already-decoded output [1, N, 6] where 6 = [x1,y1,x2,y2,score,classId]
+    std::vector<Detection> parseDecodedOutput(
+        const float* output, const std::vector<int64_t>& shape,
+        int imgWidth, int imgHeight);
+
     // Parse multi-output YOLO format (3 scales)
     std::vector<Detection> parseMultiOutput(
         const std::vector<float*>& outputs,

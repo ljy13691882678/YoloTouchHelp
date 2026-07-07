@@ -382,6 +382,49 @@ std::vector<Detection> OnnxEngine::parseMultiOutput(
     return detections;
 }
 
+std::vector<Detection> OnnxEngine::parseDecodedOutput(
+    const float* output, const std::vector<int64_t>& shape,
+    int imgWidth, int imgHeight) {
+    std::vector<Detection> detections;
+
+    if (shape.size() < 3) return detections;
+
+    int64_t numDetections = shape[1];  // N
+    // shape[2] == 6: [x1, y1, x2, y2, score, class_id]
+
+    ONNX_LOG("parseDecoded: %lld detections, img=%dx%d", (long long)numDetections, imgWidth, imgHeight);
+
+    for (int64_t i = 0; i < numDetections; i++) {
+        const float* row = output + i * 6;
+        float x1 = row[0];
+        float y1 = row[1];
+        float x2 = row[2];
+        float y2 = row[3];
+        float score = row[4];
+        float classId = row[5];
+
+        if (score < m_conf_thresh) continue;
+
+        // Coordinates are pixel values on the model input, normalize to [0,1]
+        x1 /= imgWidth;
+        y1 /= imgHeight;
+        x2 /= imgWidth;
+        y2 /= imgHeight;
+
+        x1 = std::max(0.0f, std::min(1.0f, x1));
+        y1 = std::max(0.0f, std::min(1.0f, y1));
+        x2 = std::max(0.0f, std::min(1.0f, x2));
+        y2 = std::max(0.0f, std::min(1.0f, y2));
+
+        if (x2 <= x1 || y2 <= y1) continue;
+
+        detections.push_back({x1, y1, x2, y2, score, classId});
+    }
+
+    ONNX_LOG("parseDecoded: %zu detections after threshold", detections.size());
+    return detections;
+}
+
 std::vector<Detection> OnnxEngine::detect(
     uint8_t* src,
     int offsetX, int offsetY,
@@ -441,7 +484,12 @@ std::vector<Detection> OnnxEngine::detect(
                          elemCount, outMin, outMax, outSum / elemCount);
             }
 
-            rawDetections = parseYoloV8Output(outputData, shape, m_input_width, m_input_height);
+            // Route: [1, N, 6] = decoded boxes; [1, featureDim, numAnchors] = raw YOLO
+            if (shape.size() == 3 && shape[2] == 6) {
+                rawDetections = parseDecodedOutput(outputData, shape, m_input_width, m_input_height);
+            } else {
+                rawDetections = parseYoloV8Output(outputData, shape, m_input_width, m_input_height);
+            }
         } else {
             std::vector<float*> outputs;
             std::vector<std::vector<int64_t>> shapes;
