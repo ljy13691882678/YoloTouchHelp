@@ -1,4 +1,5 @@
 package com.xunlei.ai.service
+import com.xunlei.ai.R
 import com.xunlei.ai.model.DetectionInfo
 
 import android.app.*
