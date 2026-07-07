@@ -57,6 +57,9 @@ jobs:
         name: app-debug
         path: app/build/outputs/apk/debug/app-debug.apk
         
+    - name: Generate Release Keystore
+      run: keytool -genkey -v -keystore app/release.jks -alias aimbot -keyalg RSA -keysize 2048 -validity 10000 -storepass aimbot123456 -keypass aimbot123456 -dname "CN=Developer, OU=Dev, O=Private, L=City, S=State, C=CN"
+        
     - name: Build Release APK
       run: ./gradlew assembleRelease
       continue-on-error: true
