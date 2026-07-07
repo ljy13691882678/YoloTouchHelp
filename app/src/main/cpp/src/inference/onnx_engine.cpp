@@ -184,11 +184,15 @@ void OnnxEngine::preprocess(const uint8_t* rgbaData,
             float wx0 = 1.0f - wx1;
             float wy0 = 1.0f - wy1;
 
+            // RGBA → BGR (match NCNN PIXEL_RGBA2BGR convention)
+            // BGR channel order: c=0→B(2), c=1→G(1), c=2→R(0)
+            static const int bgrMap[3] = {2, 1, 0};
             for (int c = 0; c < 3; c++) {
-                float val = wx0 * wy0 * rgbaData[(y0 * rowStride) + x0 * pixelStride + c] +
-                            wx1 * wy0 * rgbaData[(y0 * rowStride) + x1 * pixelStride + c] +
-                            wx0 * wy1 * rgbaData[(y1 * rowStride) + x0 * pixelStride + c] +
-                            wx1 * wy1 * rgbaData[(y1 * rowStride) + x1 * pixelStride + c];
+                int srcC = bgrMap[c];
+                float val = wx0 * wy0 * rgbaData[(y0 * rowStride) + x0 * pixelStride + srcC] +
+                            wx1 * wy0 * rgbaData[(y0 * rowStride) + x1 * pixelStride + srcC] +
+                            wx0 * wy1 * rgbaData[(y1 * rowStride) + x0 * pixelStride + srcC] +
+                            wx1 * wy1 * rgbaData[(y1 * rowStride) + x1 * pixelStride + srcC];
                 // NCHW layout: [C, H, W]
                 inputTensor[c * dstH * dstW + dy * dstW + dx] = val / 255.0f;
             }
@@ -420,6 +424,22 @@ std::vector<Detection> OnnxEngine::detect(
             auto typeInfo = outTensor.GetTensorTypeAndShapeInfo();
             auto shape = typeInfo.GetShape();
             const float* outputData = outTensor.GetTensorData<float>();
+            size_t elemCount = typeInfo.GetElementCount();
+
+            // Debug: print output stats
+            if (elemCount > 0) {
+                float outMin = outputData[0], outMax = outputData[0];
+                double outSum = 0.0;
+                for (size_t i = 0; i < elemCount; i++) {
+                    if (outputData[i] < outMin) outMin = outputData[i];
+                    if (outputData[i] > outMax) outMax = outputData[i];
+                    outSum += outputData[i];
+                }
+                ONNX_LOG("Output[0] shape=[%d", (int)shape[0]);
+                for (size_t s = 1; s < shape.size(); s++) ONNX_LOG(",%d", (int)shape[s]);
+                ONNX_LOG("] elements=%zu min=%.4f max=%.4f mean=%.4f",
+                         elemCount, outMin, outMax, outSum / elemCount);
+            }
 
             rawDetections = parseYoloV8Output(outputData, shape, m_input_width, m_input_height);
         } else {

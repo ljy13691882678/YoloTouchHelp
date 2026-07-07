@@ -135,6 +135,30 @@ class FloatService : Service() {
 
     // Hold-to-fire (按住激发) state — uses trigger slot, separate from aim slot
     // Touch display overlay
+
+    // FPS 统计
+    private var fpsFrameCount = 0
+    private var fpsLastTime = 0L
+    private var currentFps = 0f
+    private var currentTemperature = ""
+
+    // 温度读取
+    private val thermalZones = listOf(
+        "/sys/class/thermal/thermal_zone0/temp",
+        "/sys/class/thermal/thermal_zone1/temp",
+        "/sys/class/thermal/thermal_zone5/temp"  // common CPU sensor
+    )
+    private fun readCpuTemperature(): String {
+        for (path in thermalZones) {
+            try {
+                val temp = java.io.File(path).readText().trim().toIntOrNull()
+                if (temp != null && temp in 100..150000) {
+                    return "${"%.1f".format(temp / 1000f)}°C"
+                }
+            } catch (_: Exception) {}
+        }
+        return ""
+    }
     private var touchDisplayEnabled = false
     private var touchDisplayView: TouchDisplayView? = null
     private var touchDisplayAdded = false
@@ -1000,6 +1024,7 @@ class FloatService : Service() {
         executor.execute {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
             var aliveCtr = 0
+            fpsLastTime = SystemClock.elapsedRealtime()
             while (inferRunning.get()) {
                 if (++aliveCtr % 30 == 0) { Log.d(TAG, "alive trigger=$triggerEnabled shizuku=${touchClient?.isConnected()} detects=${hasDetects.get()}") }
                 val currentRange = guiPanel.range
@@ -1105,6 +1130,24 @@ class FloatService : Service() {
 
                     // detection-based trigger: center in any detection box (filtered by aimClasses)
                     triggerController.processTrigger(lastDetections, centerX, centerY, hasDetects.get())
+
+                    // FPS 计算
+                    fpsFrameCount++
+                    val now = SystemClock.elapsedRealtime()
+                    val elapsed = now - fpsLastTime
+                    if (elapsed >= 1000) {
+                        currentFps = fpsFrameCount * 1000f / elapsed
+                        fpsFrameCount = 0
+                        fpsLastTime = now
+                        // 每 2 秒更新一次温度
+                        if (aliveCtr % 60 == 0) {
+                            currentTemperature = readCpuTemperature()
+                        }
+                        mainHandler.post {
+                            overlayView.fps = currentFps.toInt().toString()
+                            overlayView.temperature = currentTemperature
+                        }
+                    }
                 } catch (e: Exception) { Log.e(TAG, "推理帧异常: ${e.message}") }
                 finally { hwBuf?.close(); image.close() }
             }

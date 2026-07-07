@@ -23,6 +23,21 @@ class OverlayCanvasView(context: Context) : View(context) {
     private var lockRayX = Float.NaN
     private var lockRayY = Float.NaN
 
+    // FPS & temperature stats
+    var fps: String = ""
+    var temperature: String = ""
+    private val paintStats = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#CCFFFFFF")
+        textSize = 28f
+        typeface = Typeface.MONOSPACE
+        setShadowLayer(4f, 0f, 2f, Color.parseColor("#AA000000"))
+    }
+    private val paintStatsLabel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#99FFFFFF")
+        textSize = 22f
+        setShadowLayer(3f, 0f, 1f, Color.parseColor("#88000000"))
+    }
+
     // Use the same soft blue-violet palette as the HTML UI.
     private val classColors = intArrayOf(
         Color.parseColor("#6366F1"),
@@ -92,6 +107,32 @@ class OverlayCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val dets = detections
+
+        // Draw FPS and temperature in top-center
+        if (fps.isNotEmpty() || temperature.isNotEmpty()) {
+            val statText = buildString {
+                if (fps.isNotEmpty()) append("FPS:$fps")
+                if (temperature.isNotEmpty()) {
+                    if (isNotEmpty()) append("  ")
+                    append("$temperature")
+                }
+            }
+            val statW = paintStats.measureText(statText)
+            val fm = paintStats.fontMetrics
+            val statH = fm.descent - fm.ascent
+            val padX = 16f
+            val padY = 8f
+            val bgLeft = (width - statW) / 2f - padX
+            val bgTop = 24f
+            val bgRight = (width + statW) / 2f + padX
+            val bgBottom = bgTop + statH + padY * 2
+
+            val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#66000000")
+            }
+            canvas.drawRoundRect(bgLeft, bgTop, bgRight, bgBottom, 14f, 14f, bgPaint)
+            canvas.drawText(statText, (width - statW) / 2f, bgTop + padY - fm.ascent, paintStats)
+        }
 
         if (showCaptureRange) {
             val cx = width / 2f
