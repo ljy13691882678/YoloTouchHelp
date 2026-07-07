@@ -302,27 +302,33 @@ std::vector<Detection> OnnxEngine::parseYoloV8Output(
                     pred_ltrb[k] = softmaxCompute(dis_values, reg_max_1) * stride;
                 }
             } else {
-                // No DFL (reg_max=1): raw bbox offsets
+                // No DFL (reg_max=1): bbox values are already pixel coordinates [x1,y1,x2,y2]
                 for (int k = 0; k < 4; k++) {
-                    float val;
                     if (transposed) {
-                        val = output[k * numAnchors + row_idx];
+                        pred_ltrb[k] = output[k * numAnchors + row_idx];
                     } else {
-                        val = output[row_idx * featureDim + k];
+                        pred_ltrb[k] = output[row_idx * featureDim + k];
                     }
-                    pred_ltrb[k] = val * stride;
                 }
             }
 
-            int grid_x = i % num_grid_x;
-            int grid_y = i / num_grid_x;
-            float pb_cx = (grid_x + 0.5f) * stride;
-            float pb_cy = (grid_y + 0.5f) * stride;
-
-            float x0 = pb_cx - pred_ltrb[0];
-            float y0 = pb_cy - pred_ltrb[1];
-            float x1 = pb_cx + pred_ltrb[2];
-            float y1 = pb_cy + pred_ltrb[3];
+            float x0, y0, x1, y1;
+            if (hasDFL) {
+                int grid_x = i % num_grid_x;
+                int grid_y = i / num_grid_x;
+                float pb_cx = (grid_x + 0.5f) * stride;
+                float pb_cy = (grid_y + 0.5f) * stride;
+                x0 = pb_cx - pred_ltrb[0];
+                y0 = pb_cy - pred_ltrb[1];
+                x1 = pb_cx + pred_ltrb[2];
+                y1 = pb_cy + pred_ltrb[3];
+            } else {
+                // No DFL: bbox values are already pixel coordinates
+                x0 = pred_ltrb[0];
+                y0 = pred_ltrb[1];
+                x1 = pred_ltrb[2];
+                y1 = pred_ltrb[3];
+            }
 
             x0 /= imgWidth; y0 /= imgHeight;
             x1 /= imgWidth; y1 /= imgHeight;
