@@ -128,10 +128,10 @@ class AimController(
                 if (aimingState.committedMissingFrames > killFrames) {
                     Log.d(TAG, "commit: target missing ${aimingState.committedMissingFrames} frames, confirmed killed, switching to next")
                     clearCommitment()
+                    // 确认击杀后允许选择新目标，继续往下走到正常选择阶段
                 } else {
-                    // 宽限期 — 使用最后已知位置
-                    val hasLock = aimingState.lockedTrackId >= 0 || aimingState.lockedTarget != null
-                    if (hasLock && !aimingState.lastTargetX.isNaN() && !aimingState.lastTargetY.isNaN() &&
+                    // 宽限期 — 使用最后已知位置，绝不切换到其他目标
+                    if (!aimingState.lastTargetX.isNaN() && !aimingState.lastTargetY.isNaN() &&
                         aimingState.lockedMissedFrames < targetLostTolerance.coerceIn(0, 10)) {
                         aimingState.lockedMissedFrames++
                         return AimSolution(
@@ -141,6 +141,8 @@ class AimController(
                             usingFallback = true
                         )
                     }
+                    // 宽限期内没有可用位置 — 停止瞄准，等待目标回来，不切换
+                    return null
                 }
             }
         }
