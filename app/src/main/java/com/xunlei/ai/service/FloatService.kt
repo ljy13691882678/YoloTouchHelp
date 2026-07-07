@@ -1146,6 +1146,7 @@ class FloatService : Service() {
                         mainHandler.post {
                             overlayView.fps = currentFps.toInt().toString()
                             overlayView.temperature = currentTemperature
+                            overlayView.postInvalidateOnAnimation()
                         }
                     }
                 } catch (e: Exception) { Log.e(TAG, "推理帧异常: ${e.message}") }
