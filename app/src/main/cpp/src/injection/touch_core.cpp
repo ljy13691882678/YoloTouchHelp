@@ -275,18 +275,21 @@ static void upload() {
         bool wasUploaded = g_uploadedFingerDown[0][fi];
         const int slot = fi;
 
-        if (finger.isDown) {
+        // ── Only upload virtual fingers to the uinput device ──
+        // Physical fingers go directly to the system from the physical device
+        // (no EVIOCGRAB). Uploading them here would cause double-touch.
+        if (!finger.isVirtual && !wasUploaded) continue;
+
+        if (finger.isDown && finger.isVirtual) {
             // ── Apply exponential smoothing for virtual fingers ──
-            if (finger.isVirtual) {
-                float dx = finger.targetPos.x - finger.pos.x;
-                float dy = finger.targetPos.y - finger.pos.y;
-                float dist2 = dx * dx + dy * dy;
-                if (dist2 > 0.5f) {
-                    finger.pos.x += dx * smoothFactor;
-                    finger.pos.y += dy * smoothFactor;
-                } else {
-                    finger.pos = finger.targetPos;
-                }
+            float dx = finger.targetPos.x - finger.pos.x;
+            float dy = finger.targetPos.y - finger.pos.y;
+            float dist2 = dx * dx + dy * dy;
+            if (dist2 > 0.5f) {
+                finger.pos.x += dx * smoothFactor;
+                finger.pos.y += dy * smoothFactor;
+            } else {
+                finger.pos = finger.targetPos;
             }
 
             hasActiveFinger = true;
@@ -299,11 +302,9 @@ static void upload() {
             // ── Position with micro-jitter for virtual fingers ──
             int posX = static_cast<int>(std::lround(finger.pos.x));
             int posY = static_cast<int>(std::lround(finger.pos.y));
-            if (finger.isVirtual) {
-                // Sub-pixel jitter: ±1.5px random walk, slow enough to not look like noise
-                posX += static_cast<int>(std::lround(randFloatSym() * 1.5f));
-                posY += static_cast<int>(std::lround(randFloatSym() * 1.5f));
-            }
+            // Sub-pixel jitter: ±1.5px random walk
+            posX += static_cast<int>(std::lround(randFloatSym() * 1.5f));
+            posY += static_cast<int>(std::lround(randFloatSym() * 1.5f));
 
             pushEvent(count, EV_ABS, ABS_MT_POSITION_X, posX);
             pushEvent(count, EV_ABS, ABS_MT_POSITION_Y, posY);
@@ -311,13 +312,13 @@ static void upload() {
             pushEvent(count, EV_ABS, ABS_Y, posY);
 
             // ── Pressure: 120~180 with frame-level variation ──
-            int pressure = pressureBase + (static_cast<int>(fastRand()) % 11) - 5;  // ±5 from base
+            int pressure = pressureBase + (static_cast<int>(fastRand()) % 11) - 5;
             pressure = std::clamp(pressure, 110, 190);
 
             // TouchMajor: 18~38, correlated with pressure
             int touchMajor = 18 + (pressure - 110) * 20 / 80 + (static_cast<int>(fastRand()) % 5) - 2;
             touchMajor = std::clamp(touchMajor, 16, 40);
-            int touchMinor = touchMajor - 5 + (static_cast<int>(fastRand()) % 7);  // 11~42
+            int touchMinor = touchMajor - 5 + (static_cast<int>(fastRand()) % 7);
             touchMinor = std::clamp(touchMinor, 12, 42);
 
             pushEvent(count, EV_ABS, ABS_MT_PRESSURE, pressure);
@@ -325,10 +326,12 @@ static void upload() {
             pushEvent(count, EV_ABS, ABS_MT_TOUCH_MAJOR, touchMajor);
             pushEvent(count, EV_ABS, ABS_MT_TOUCH_MINOR, touchMinor);
             pushEvent(count, EV_ABS, ABS_MT_WIDTH_MAJOR, touchMajor);
-            pushEvent(count, EV_ABS, ABS_MT_TOOL_TYPE, 0);  // MT_TOOL_FINGER
+            pushEvent(count, EV_ABS, ABS_MT_TOOL_TYPE, 0);
 
             g_uploadedFingerDown[0][fi] = true;
         } else if (wasUploaded) {
+            // Finger was previously uploaded (virtual) and is now released,
+            // or was a physical finger that had its slot used by a virtual one
             pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
             pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, -1);
             g_uploadedFingerDown[0][fi] = false;
@@ -336,7 +339,6 @@ static void upload() {
     }
 
     pushEvent(count, EV_KEY, BTN_TOUCH, hasActiveFinger ? 1 : 0);
-    // Dynamic: BTN_TOOL_FINGER only for single-touch, 0 for multi-touch
     pushEvent(count, EV_KEY, BTN_TOOL_FINGER, (activeFingerCount == 1) ? 1 : 0);
     pushEvent(count, EV_SYN, SYN_REPORT, 0);
 
@@ -645,9 +647,10 @@ bool touch_init(int screenW, int screenH) {
         if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &device.absX) == 0 &&
             ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &device.absY) == 0) {
             device.fd = fd;
-            ioctl(fd, EVIOCGRAB, GRAB);
+            // DO NOT GRAB: EVIOCGRAB steals the physical touch, makes screen unresponsive.
+            // Just read the touch events through kernel sharing — this coexists fine.
             g_devices.push_back(device);
-            LOGD("touch device %s max=%d,%d", path, device.absX.maximum, device.absY.maximum);
+            LOGD("touch device %s max=%d,%d (no EVIOCGRAB for sharing)", path, device.absX.maximum, device.absY.maximum);
         } else {
             close(fd);
         }
