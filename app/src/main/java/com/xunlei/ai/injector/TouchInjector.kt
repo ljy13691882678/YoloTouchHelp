@@ -26,7 +26,7 @@ class TouchInjector {
 
     // ── Anti-detection: randomized per-session parameters ──
     private val rng = Random
-    private val touchId = 0 + rng.nextInt(3) // 0~2, single touch pointer
+    private val touchId = 5 + rng.nextInt(8) // 5~12, avoid conflict with physical touch IDs (0-4)
 
     @Volatile
     var available: Boolean = false

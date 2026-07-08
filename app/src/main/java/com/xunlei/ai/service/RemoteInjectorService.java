@@ -48,8 +48,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
     public static RemoteInjectorService instance;
 
     public RemoteInjectorService() {
-        // Single touch pointer ID: 0-2
-        touchId = rng.nextInt(3);
+        // Single touch pointer ID: 5-12 (avoid conflict with physical touch IDs 0-4)
+        touchId = 5 + rng.nextInt(8);
     }
 
     public void setResolution(int sw, int sh, int dw, int dh) {
