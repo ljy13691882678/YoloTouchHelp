@@ -90,7 +90,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onPanelResize: ((Int, Int) -> Unit)? = null
 
     var aimbotEnabled = false
-    var speed = 0.3f
+    var speed = 0.015f
     var range = 300
     var confidence = 0.50f
     var modelIndex = 0

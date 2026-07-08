@@ -9,9 +9,9 @@ import com.xunlei.ai.model.AreaConfig
 
 data class AppConfig(
     var aimbotEnabled: Boolean = false,
-    var speed: Float = 0.15f,
-    var ki: Float = 0.02f,
-    var kd: Float = 0.08f,
+    var speed: Float = 0.015f,
+    var ki: Float = 0f,
+    var kd: Float = 0.008f,
     var pidSamplePeriodMs: Int = 8,
     var aimOffsetYRatio: Float = 0f,
     var aimSwayAmplitude: Int = 0,

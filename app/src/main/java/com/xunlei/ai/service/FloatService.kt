@@ -341,18 +341,6 @@ class FloatService : Service() {
         autoTriggerAdsRange = cfg.autoTriggerAdsRange
         ki = cfg.ki; kd = cfg.kd
 
-        // PID参数随机化（±5%范围），避免固定参数被行为分析检测
-        // 仅在首次加载时随机化一次，保持本次运行参数稳定
-        if (!::aimController.isInitialized) {
-            val random = java.util.Random()
-            val kpJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f // ±5%
-            val kiJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
-            val kdJitter = 1f + (random.nextFloat() - 0.5f) * 0.1f
-            kp = (kp * kpJitter).coerceIn(0.2f, 0.5f)
-            ki = (ki * kiJitter).coerceIn(0.01f, 0.05f)
-            kd = (kd * kdJitter).coerceIn(0.05f, 0.12f)
-        }
-
         aimMode = cfg.aimMode
         bezierDuration = cfg.bezierDuration
         bezierControlOffset = cfg.bezierControlOffset
@@ -730,6 +718,22 @@ class FloatService : Service() {
             guiPanel.moveSmooth = moveSmooth; guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
             guiPanel.edgeReturnStrength = edgeReturnStrength; guiPanel.touchOrientationMode = touchOrientationMode
             guiPanel.showDetectionClassIds = showDetectionClassIds.toSet()
+            // 补充路径A遗漏的属性
+            guiPanel.range = cachedRangePx; guiPanel.confidence = currentConfidence
+            guiPanel.triggerEnabled = triggerEnabled; guiPanel.triggerReactionSpeed = triggerReactionSpeed
+            guiPanel.triggerCooldown = triggerCooldown; guiPanel.triggerUpFluctuation = triggerUpFluct
+            guiPanel.triggerDownFluctuation = triggerDownFluct; guiPanel.triggerTouchDuration = triggerTouchDuration
+            guiPanel.triggerTouchRange = triggerTouchRange; guiPanel.triggerShowArea = triggerShowArea
+            guiPanel.aimOffsetYRatio = aimOffsetYRatio; guiPanel.aimSwayAmplitude = aimSwayAmplitude
+            guiPanel.triggerOffsetYRatio = triggerOffsetYRatio
+            guiPanel.showCaptureRange = overlayView.showCaptureRange; guiPanel.showDetectionBox = overlayView.showDetectionBox
+            guiPanel.showCenterDot = overlayView.showCenterDot
+            guiPanel.recoilEnabled = recoilEnabled; guiPanel.recoilStrength = recoilStrength
+            guiPanel.kalmanMaxMissed = kalmanMaxMissed; guiPanel.kalmanProcessNoise = kalmanProcessNoise
+            guiPanel.kalmanMeasureNoise = kalmanMeasureNoise; guiPanel.kalmanBoxSmooth = kalmanBoxSmooth
+            guiPanel.kalmanMatchIouThreshold = kalmanMatchIouThreshold
+            guiPanel.autoStopEnabled = autoStopEnabled; guiPanel.aimHoldEnabled = aimHoldEnabled
+            guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
             guiPanel.buildUI()
             guiPanel.visibility = View.VISIBLE; guiPanel.alpha = 0f; guiPanel.scaleX = 0.85f; guiPanel.scaleY = 0.85f
             guiPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start(); guiVisible = true; return
@@ -809,54 +813,54 @@ class FloatService : Service() {
             else { clearAimSession("aimbot_disabled", clearVisualTargets = false) }
             Log.d("XunleiAIInfer", "开关切换: $on")
         }
-        guiPanel.onSpeedChanged = { kp = it; currentSpeed = it; aimController.kp = it; ConfigManager.updateConfig { speed = it } }
-        guiPanel.onRangeChanged = { px -> overlayView.rangeRadius = px; overlayView.postInvalidate(); ConfigManager.updateConfig { range = px } }
-        guiPanel.onConfidenceChanged = { currentConfidence = it; JniCallBack.setConfidence(it); ConfigManager.updateConfig { confidence = it } }
-        guiPanel.onTriggerEnabled = { triggerEnabled = it; triggerController.triggerEnabled = it; ConfigManager.updateConfig { triggerEnabled = it } }
-        guiPanel.onTriggerReactionSpeed = { triggerReactionSpeed = it; triggerController.triggerReactionSpeed = it; ConfigManager.updateConfig { triggerReactionSpeed = it } }
-        guiPanel.onTriggerCooldown = { triggerCooldown = it; triggerController.triggerCooldown = it; ConfigManager.updateConfig { triggerCooldown = it } }
-        guiPanel.onTriggerUpFluctuation = { triggerUpFluct = it; triggerController.triggerUpFluct = it; ConfigManager.updateConfig { triggerUpFluctuation = it } }
-        guiPanel.onTriggerDownFluctuation = { triggerDownFluct = it; triggerController.triggerDownFluct = it; ConfigManager.updateConfig { triggerDownFluctuation = it } }
-        guiPanel.onTriggerTouchDuration = { triggerTouchDuration = it; triggerController.triggerTouchDuration = it; ConfigManager.updateConfig { triggerTouchDuration = it } }
-        guiPanel.onTriggerTouchRange = { px -> triggerTouchRange = px; triggerController.triggerTouchRange = px; updateTriggerOverlaySize(); triggerController.updateTriggerOverlaySize(); ConfigManager.updateConfig { triggerTouchRange = px } }
-        guiPanel.onTriggerShowArea = { show -> triggerShowArea = show; triggerController.triggerShowArea = show; if (show) setupTriggerOverlay(); updateTriggerOverlayVisibility(); triggerController.updateTriggerOverlayVisibility(); ConfigManager.updateConfig { triggerShowArea = show } }
-        guiPanel.onAutoStopEnabledChanged = { autoStopEnabled = it; triggerController.autoStopEnabled = it; ConfigManager.updateConfig { autoStopEnabled = it } }
-        guiPanel.onAutoTriggerAdsEnabledChanged = { autoTriggerAdsEnabled = it; triggerController.autoTriggerAdsEnabled = it; ConfigManager.updateConfig { autoTriggerAdsEnabled = it } }
-        guiPanel.onAutoTriggerAdsRangeChanged = { autoTriggerAdsRange = it; triggerController.autoTriggerAdsRange = it; ConfigManager.updateConfig { autoTriggerAdsRange = it } }
-        guiPanel.onAimOffsetYRatioChanged = { aimOffsetYRatio = it; aimController.aimOffsetYRatio = it; ConfigManager.updateConfig { aimOffsetYRatio = it } }
-        guiPanel.onAimSwayAmplitudeChanged = { aimSwayAmplitude = it; aimController.aimSwayAmplitude = it; ConfigManager.updateConfig { aimSwayAmplitude = it } }
-        guiPanel.onAimPredictionMultiplierChanged = { aimPredictionMultiplier = it; aimController.aimPredictionMultiplier = it; ConfigManager.updateConfig { aimPredictionMultiplier = it } }
-        guiPanel.onRecoilEnabledChanged = { recoilEnabled = it; aimController.recoilEnabled = it; ConfigManager.updateConfig { recoilEnabled = it } }
-        guiPanel.onRecoilStrengthChanged = { recoilStrength = it; aimController.recoilStrength = it; ConfigManager.updateConfig { recoilStrength = it } }
-        guiPanel.onShowLockRayChanged = { showLockRay = it; aimController.showLockRay = it; overlayView.showLockRay = it; if (!it) overlayView.updateLockRay(null, null); ConfigManager.updateConfig { showLockRay = it } }
+        guiPanel.onSpeedChanged = { kp = it; currentSpeed = it; guiPanel.speed = it; aimController.kp = it; ConfigManager.updateConfig { speed = it } }
+        guiPanel.onRangeChanged = { px -> guiPanel.range = px; overlayView.rangeRadius = px; overlayView.postInvalidate(); ConfigManager.updateConfig { range = px } }
+        guiPanel.onConfidenceChanged = { currentConfidence = it; guiPanel.confidence = it; JniCallBack.setConfidence(it); ConfigManager.updateConfig { confidence = it } }
+        guiPanel.onTriggerEnabled = { triggerEnabled = it; guiPanel.triggerEnabled = it; triggerController.triggerEnabled = it; ConfigManager.updateConfig { triggerEnabled = it } }
+        guiPanel.onTriggerReactionSpeed = { triggerReactionSpeed = it; guiPanel.triggerReactionSpeed = it; triggerController.triggerReactionSpeed = it; ConfigManager.updateConfig { triggerReactionSpeed = it } }
+        guiPanel.onTriggerCooldown = { triggerCooldown = it; guiPanel.triggerCooldown = it; triggerController.triggerCooldown = it; ConfigManager.updateConfig { triggerCooldown = it } }
+        guiPanel.onTriggerUpFluctuation = { triggerUpFluct = it; guiPanel.triggerUpFluctuation = it; triggerController.triggerUpFluct = it; ConfigManager.updateConfig { triggerUpFluctuation = it } }
+        guiPanel.onTriggerDownFluctuation = { triggerDownFluct = it; guiPanel.triggerDownFluctuation = it; triggerController.triggerDownFluct = it; ConfigManager.updateConfig { triggerDownFluctuation = it } }
+        guiPanel.onTriggerTouchDuration = { triggerTouchDuration = it; guiPanel.triggerTouchDuration = it; triggerController.triggerTouchDuration = it; ConfigManager.updateConfig { triggerTouchDuration = it } }
+        guiPanel.onTriggerTouchRange = { px -> guiPanel.triggerTouchRange = px; triggerTouchRange = px; triggerController.triggerTouchRange = px; updateTriggerOverlaySize(); triggerController.updateTriggerOverlaySize(); ConfigManager.updateConfig { triggerTouchRange = px } }
+        guiPanel.onTriggerShowArea = { show -> triggerShowArea = show; guiPanel.triggerShowArea = show; triggerController.triggerShowArea = show; if (show) setupTriggerOverlay(); updateTriggerOverlayVisibility(); triggerController.updateTriggerOverlayVisibility(); ConfigManager.updateConfig { triggerShowArea = show } }
+        guiPanel.onAutoStopEnabledChanged = { autoStopEnabled = it; guiPanel.autoStopEnabled = it; triggerController.autoStopEnabled = it; ConfigManager.updateConfig { autoStopEnabled = it } }
+        guiPanel.onAutoTriggerAdsEnabledChanged = { autoTriggerAdsEnabled = it; guiPanel.autoTriggerAdsEnabled = it; triggerController.autoTriggerAdsEnabled = it; ConfigManager.updateConfig { autoTriggerAdsEnabled = it } }
+        guiPanel.onAutoTriggerAdsRangeChanged = { autoTriggerAdsRange = it; guiPanel.autoTriggerAdsRange = it; triggerController.autoTriggerAdsRange = it; ConfigManager.updateConfig { autoTriggerAdsRange = it } }
+        guiPanel.onAimOffsetYRatioChanged = { aimOffsetYRatio = it; guiPanel.aimOffsetYRatio = it; aimController.aimOffsetYRatio = it; ConfigManager.updateConfig { aimOffsetYRatio = it } }
+        guiPanel.onAimSwayAmplitudeChanged = { aimSwayAmplitude = it; guiPanel.aimSwayAmplitude = it; aimController.aimSwayAmplitude = it; ConfigManager.updateConfig { aimSwayAmplitude = it } }
+        guiPanel.onAimPredictionMultiplierChanged = { aimPredictionMultiplier = it; guiPanel.aimPredictionMultiplier = it; aimController.aimPredictionMultiplier = it; ConfigManager.updateConfig { aimPredictionMultiplier = it } }
+        guiPanel.onRecoilEnabledChanged = { recoilEnabled = it; guiPanel.recoilEnabled = it; aimController.recoilEnabled = it; ConfigManager.updateConfig { recoilEnabled = it } }
+        guiPanel.onRecoilStrengthChanged = { recoilStrength = it; guiPanel.recoilStrength = it; aimController.recoilStrength = it; ConfigManager.updateConfig { recoilStrength = it } }
+        guiPanel.onShowLockRayChanged = { showLockRay = it; guiPanel.showLockRay = it; aimController.showLockRay = it; overlayView.showLockRay = it; if (!it) overlayView.updateLockRay(null, null); ConfigManager.updateConfig { showLockRay = it } }
         guiPanel.onShowDetectionClassIdsChanged = { ids ->
             showDetectionClassIds = ids.toMutableSet()
             overlayView.enabledClassIds = ids
             overlayView.postInvalidate()
             ConfigManager.updateConfig { showDetectionClassIds = ids }
         }
-        guiPanel.onTargetLostToleranceChanged = { targetLostTolerance = it; aimController.targetLostTolerance = it; ConfigManager.updateConfig { targetLostTolerance = it } }
-        guiPanel.onLockBoxThresholdChanged = { lockBoxThreshold = it; aimController.lockBoxThreshold = it; ConfigManager.updateConfig { lockBoxThreshold = it } }
-        guiPanel.onLockCenterWeightChanged = { lockCenterWeight = it; aimController.lockCenterWeight = it; ConfigManager.updateConfig { lockCenterWeight = it } }
-        guiPanel.onMoveSmoothChanged = { moveSmooth = it; aimController.moveSmooth = it; ConfigManager.updateConfig { moveSmooth = it } }
-        guiPanel.onDeadzoneHoldFramesChanged = { deadzoneHoldFrames = it; aimController.deadzoneHoldFrames = it; ConfigManager.updateConfig { deadzoneHoldFrames = it } }
-        guiPanel.onEdgeReturnStrengthChanged = { edgeReturnStrength = it; aimController.edgeReturnStrength = it; ConfigManager.updateConfig { edgeReturnStrength = it } }
-        guiPanel.onKalmanPredictEnabledChanged = { enabled -> kalmanPredictEnabled = enabled; if (!enabled) kalmanTracker.reset(); ConfigManager.updateConfig { kalmanPredictEnabled = enabled } }
-        guiPanel.onKalmanMaxMissedChanged = { value -> kalmanMaxMissed = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMaxMissed = value } }
-        guiPanel.onKalmanProcessNoiseChanged = { value -> kalmanProcessNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanProcessNoise = value } }
-        guiPanel.onKalmanMeasureNoiseChanged = { value -> kalmanMeasureNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMeasureNoise = value } }
-        guiPanel.onKalmanBoxSmoothChanged = { value -> kalmanBoxSmooth = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanBoxSmooth = value } }
-        guiPanel.onKalmanMatchIouThresholdChanged = { value -> kalmanMatchIouThreshold = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMatchIouThreshold = value } }
-        guiPanel.onTriggerOffsetYRatioChanged = { triggerOffsetYRatio = it; triggerController.triggerOffsetYRatio = it; ConfigManager.updateConfig { triggerOffsetYRatio = it } }
+        guiPanel.onTargetLostToleranceChanged = { targetLostTolerance = it; guiPanel.targetLostTolerance = it; aimController.targetLostTolerance = it; ConfigManager.updateConfig { targetLostTolerance = it } }
+        guiPanel.onLockBoxThresholdChanged = { lockBoxThreshold = it; guiPanel.lockBoxThreshold = it; aimController.lockBoxThreshold = it; ConfigManager.updateConfig { lockBoxThreshold = it } }
+        guiPanel.onLockCenterWeightChanged = { lockCenterWeight = it; guiPanel.lockCenterWeight = it; aimController.lockCenterWeight = it; ConfigManager.updateConfig { lockCenterWeight = it } }
+        guiPanel.onMoveSmoothChanged = { moveSmooth = it; guiPanel.moveSmooth = it; aimController.moveSmooth = it; ConfigManager.updateConfig { moveSmooth = it } }
+        guiPanel.onDeadzoneHoldFramesChanged = { deadzoneHoldFrames = it; guiPanel.deadzoneHoldFrames = it; aimController.deadzoneHoldFrames = it; ConfigManager.updateConfig { deadzoneHoldFrames = it } }
+        guiPanel.onEdgeReturnStrengthChanged = { edgeReturnStrength = it; guiPanel.edgeReturnStrength = it; aimController.edgeReturnStrength = it; ConfigManager.updateConfig { edgeReturnStrength = it } }
+        guiPanel.onKalmanPredictEnabledChanged = { enabled -> kalmanPredictEnabled = enabled; guiPanel.kalmanPredictEnabled = enabled; if (!enabled) kalmanTracker.reset(); ConfigManager.updateConfig { kalmanPredictEnabled = enabled } }
+        guiPanel.onKalmanMaxMissedChanged = { value -> kalmanMaxMissed = value; guiPanel.kalmanMaxMissed = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMaxMissed = value } }
+        guiPanel.onKalmanProcessNoiseChanged = { value -> kalmanProcessNoise = value; guiPanel.kalmanProcessNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanProcessNoise = value } }
+        guiPanel.onKalmanMeasureNoiseChanged = { value -> kalmanMeasureNoise = value; guiPanel.kalmanMeasureNoise = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMeasureNoise = value } }
+        guiPanel.onKalmanBoxSmoothChanged = { value -> kalmanBoxSmooth = value; guiPanel.kalmanBoxSmooth = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanBoxSmooth = value } }
+        guiPanel.onKalmanMatchIouThresholdChanged = { value -> kalmanMatchIouThreshold = value; guiPanel.kalmanMatchIouThreshold = value; applyKalmanConfig(); ConfigManager.updateConfig { kalmanMatchIouThreshold = value } }
+        guiPanel.onTriggerOffsetYRatioChanged = { triggerOffsetYRatio = it; guiPanel.triggerOffsetYRatio = it; triggerController.triggerOffsetYRatio = it; ConfigManager.updateConfig { triggerOffsetYRatio = it } }
         guiPanel.onKiChanged = { ki = it; guiPanel.ki = it; aimController.ki = it; ConfigManager.updateConfig { ki = it } }
         guiPanel.onKdChanged = { kd = it; guiPanel.kd = it; aimController.kd = it; ConfigManager.updateConfig { kd = it } }
-        guiPanel.onPidSamplePeriodMsChanged = { pidSamplePeriodMs = it; aimController.pidSamplePeriodMs = it; ConfigManager.updateConfig { pidSamplePeriodMs = it } }
-        guiPanel.onAimModeChanged = { aimMode = it; aimController.aimMode = it; ConfigManager.updateConfig { aimMode = it } }
-        guiPanel.onBezierDurationChanged = { bezierDuration = it; aimController.bezierDuration = it; ConfigManager.updateConfig { bezierDuration = it } }
-        guiPanel.onBezierControlOffsetChanged = { bezierControlOffset = it; aimController.bezierControlOffset = it; ConfigManager.updateConfig { bezierControlOffset = it } }
-        guiPanel.onBezierRandomSpreadChanged = { bezierRandomSpread = it; aimController.bezierRandomSpread = it; ConfigManager.updateConfig { bezierRandomSpread = it } }
-        guiPanel.onConvergeThreshChanged = { convergeThresh = it.toFloat(); aimController.convergeThresh = it.toFloat(); ConfigManager.updateConfig { convergeThresh = it } }
-        guiPanel.onAimHoldEnabled = { aimHoldEnabled = it; aimController.aimHoldEnabled = it; ConfigManager.updateConfig { aimHoldEnabled = it } }
+        guiPanel.onPidSamplePeriodMsChanged = { pidSamplePeriodMs = it; guiPanel.pidSamplePeriodMs = it; aimController.pidSamplePeriodMs = it; ConfigManager.updateConfig { pidSamplePeriodMs = it } }
+        guiPanel.onAimModeChanged = { aimMode = it; guiPanel.aimMode = it; aimController.aimMode = it; ConfigManager.updateConfig { aimMode = it } }
+        guiPanel.onBezierDurationChanged = { bezierDuration = it; guiPanel.bezierDuration = it; aimController.bezierDuration = it; ConfigManager.updateConfig { bezierDuration = it } }
+        guiPanel.onBezierControlOffsetChanged = { bezierControlOffset = it; guiPanel.bezierControlOffset = it; aimController.bezierControlOffset = it; ConfigManager.updateConfig { bezierControlOffset = it } }
+        guiPanel.onBezierRandomSpreadChanged = { bezierRandomSpread = it; guiPanel.bezierRandomSpread = it; aimController.bezierRandomSpread = it; ConfigManager.updateConfig { bezierRandomSpread = it } }
+        guiPanel.onConvergeThreshChanged = { convergeThresh = it.toFloat(); guiPanel.convergeThresh = it; aimController.convergeThresh = it.toFloat(); ConfigManager.updateConfig { convergeThresh = it } }
+        guiPanel.onAimHoldEnabled = { aimHoldEnabled = it; guiPanel.aimHoldEnabled = it; aimController.aimHoldEnabled = it; ConfigManager.updateConfig { aimHoldEnabled = it } }
         guiPanel.onAimTouchDisplay = { show ->
             touchDisplayEnabled = show; ConfigManager.updateConfig { aimTouchDisplay = show }
             if (touchDisplayAdded) {
@@ -869,16 +873,16 @@ class FloatService : Service() {
             }
         }
         guiPanel.onAimTouchSize = { px -> ConfigManager.updateConfig { aimTouchSize = px }; val p = dp(px); touchDisplayView?.dotRadius = p.toFloat(); if (touchDisplayAdded) { val lp = touchDisplayView?.layoutParams as? WindowManager.LayoutParams; if (lp != null) { lp.width = p * 2; lp.height = p * 2; wm.updateViewLayout(touchDisplayView, lp) } } }
-        guiPanel.onShowCaptureRangeChanged = { on -> overlayView.showCaptureRange = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCaptureRange = on } }
-        guiPanel.onShowDetectionBoxChanged = { on -> overlayView.showDetectionBox = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showDetectionBox = on } }
-        guiPanel.onShowCenterDotChanged = { on -> overlayView.showCenterDot = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCenterDot = on } }
+        guiPanel.onShowCaptureRangeChanged = { on -> guiPanel.showCaptureRange = on; overlayView.showCaptureRange = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCaptureRange = on } }
+        guiPanel.onShowDetectionBoxChanged = { on -> guiPanel.showDetectionBox = on; overlayView.showDetectionBox = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showDetectionBox = on } }
+        guiPanel.onShowCenterDotChanged = { on -> guiPanel.showCenterDot = on; overlayView.showCenterDot = on; overlayView.postInvalidate(); ConfigManager.updateConfig { showCenterDot = on } }
         guiPanel.onRecordEnabledChanged = { on -> toggleRecording(on) }
         guiPanel.onAutoSaveDatasetChanged = { on -> autoSaveDataset = on }
-        guiPanel.onTouchOrientationModeChanged = { mode -> touchOrientationMode = mode; applyTouchOrientationConfig(); ConfigManager.updateConfig { touchOrientationMode = mode } }
+        guiPanel.onTouchOrientationModeChanged = { mode -> touchOrientationMode = mode; guiPanel.touchOrientationMode = mode; applyTouchOrientationConfig(); ConfigManager.updateConfig { touchOrientationMode = mode } }
         guiPanel.onAimClassesChanged = { classes -> aimClasses = classes.toMutableSet(); aimController.aimClasses = classes.toMutableSet(); ConfigManager.updateConfig { aimClasses = classes } }
         guiPanel.onPriorityClassChanged = { cls -> priorityClass = cls; aimController.priorityClass = cls; ConfigManager.updateConfig { priorityClass = cls } }
         guiPanel.onClassAimOffsetChanged = { id, value -> classAimOffsets = classAimOffsets.toMutableMap().apply { put(id, value) }; aimController.classAimOffsets = classAimOffsets; ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets } }
-        guiPanel.onBoxAimRatioChanged = { boxAimRatio = it; aimController.boxAimRatio = it; ConfigManager.updateConfig { boxAimRatio = it } }
+        guiPanel.onBoxAimRatioChanged = { boxAimRatio = it; guiPanel.boxAimRatio = it; aimController.boxAimRatio = it; ConfigManager.updateConfig { boxAimRatio = it } }
         guiPanel.onClassBoxAimRatioChanged = { id, value -> classBoxAimRatios = classBoxAimRatios.toMutableMap().apply { put(id, value) }; aimController.classBoxAimRatios = classBoxAimRatios; ConfigManager.updateConfig { classBoxAimRatios = this@FloatService.classBoxAimRatios } }
         guiPanel.onClassTriggerOffsetChanged = { id, value -> classTriggerOffsets = classTriggerOffsets.toMutableMap().apply { put(id, value) }; triggerController.classTriggerOffsets = classTriggerOffsets; ConfigManager.updateConfig { classTriggerOffsets = this@FloatService.classTriggerOffsets } }
         guiPanel.onTriggerClassesChanged = { classes -> triggerClasses = classes.toMutableSet(); triggerController.triggerClasses = classes.toMutableSet(); ConfigManager.updateConfig { triggerClasses = classes } }
