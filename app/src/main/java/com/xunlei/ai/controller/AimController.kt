@@ -27,9 +27,9 @@ class AimController(
     }
 
     // PID parameters
-    var kp = 0.30f
-    var ki = 0.02f
-    var kd = 0.08f
+    var kp = 0.015f
+    var ki = 0f
+    var kd = 0.008f
     var pidSamplePeriodMs = 8
 
     // Aim settings

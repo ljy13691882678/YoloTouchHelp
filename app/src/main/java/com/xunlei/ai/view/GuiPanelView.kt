@@ -98,8 +98,8 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var aimOffsetYRatio = 0f
     var aimSwayAmplitude = 0
     var aimPredictionMultiplier = 0.7f
-    var ki = 0.02f
-    var kd = 0.08f
+    var ki = 0f
+    var kd = 0.008f
     var pidSamplePeriodMs = 8
     var aimTouchDisplay = false
     var aimTouchSize = 20

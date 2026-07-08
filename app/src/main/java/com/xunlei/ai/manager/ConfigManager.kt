@@ -90,9 +90,9 @@ object ConfigManager {
                     val obj = JSONObject(json)
                     config = AppConfig(
                         aimbotEnabled = obj.optBoolean("aimbotEnabled", false),
-                        speed = obj.optDouble("speed", 0.3).toFloat(),
-                        ki = obj.optDouble("ki", 0.02).toFloat(),
-                        kd = obj.optDouble("kd", 0.08).toFloat(),
+                        speed = obj.optDouble("speed", 0.015).toFloat(),
+                        ki = obj.optDouble("ki", 0.0).toFloat(),
+                        kd = obj.optDouble("kd", 0.008).toFloat(),
                         pidSamplePeriodMs = obj.optInt("pidSamplePeriodMs", 8),
                         aimOffsetYRatio = obj.optDouble("aimOffsetYRatio", 0.0).toFloat(),
                         aimSwayAmplitude = obj.optInt("aimSwayAmplitude", 0),

@@ -108,7 +108,7 @@ class FloatService : Service() {
     // PID auto-aim state
     private var aimOffsetYRatio = 0f; private var aimSwayAmplitude = 0
     private var aimPredictionMultiplier = 0.7f; private var triggerOffsetYRatio = 0f
-    private var kp = 0.30f; private var ki = 0.02f; private var kd = 0.08f
+    private var kp = 0.015f; private var ki = 0f; private var kd = 0.008f
     private var pidSamplePeriodMs = 8
     private var aimHoldEnabled = false
     private var recoilEnabled = false

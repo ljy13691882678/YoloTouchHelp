@@ -738,9 +738,9 @@
                 parts.push(`
                     <div class="section">
                         <div class="section-title">PID 参数</div>
-                        ${sliderRow({ label: "Kp", key: "speed", value: state.speed, min: 0.001, max: 0.4, step: 0.001, type: "float", format: "float3" })}
-                        ${sliderRow({ label: "Ki", key: "ki", value: state.ki, min: 0.001, max: 0.4, step: 0.001, type: "float", format: "float3" })}
-                        ${sliderRow({ label: "Kd", key: "kd", value: state.kd, min: 0.001, max: 0.4, step: 0.001, type: "float", format: "float3" })}
+                        ${sliderRow({ label: "Kp", key: "speed", value: state.speed, min: 0.0, max: 0.05, step: 0.001, type: "float", format: "float3" })}
+                        ${sliderRow({ label: "Ki", key: "ki", value: state.ki, min: 0.0, max: 0.05, step: 0.001, type: "float", format: "float3" })}
+                        ${sliderRow({ label: "Kd", key: "kd", value: state.kd, min: 0.0, max: 0.05, step: 0.001, type: "float", format: "float3" })}
                         ${sliderRow({ label: "采样周期", key: "pidSamplePeriodMs", value: state.pidSamplePeriodMs, min: 1, max: 50, step: 1, type: "int", format: "ms" })}
                     </div>
                 `);
