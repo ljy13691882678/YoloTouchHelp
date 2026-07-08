@@ -86,6 +86,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onKalmanMeasureNoiseChanged: ((Float) -> Unit)? = null
     var onKalmanBoxSmoothChanged: ((Float) -> Unit)? = null
     var onKalmanMatchIouThresholdChanged: ((Float) -> Unit)? = null
+    var onAntiScreenRecordChanged: ((Boolean) -> Unit)? = null
     var onPanelDrag: ((Int, Int) -> Unit)? = null
     var onPanelResize: ((Int, Int) -> Unit)? = null
 
@@ -152,6 +153,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var autoTriggerAdsEnabled = false
     var autoTriggerAdsRange = 180f
     var touchOrientationMode = 0
+    var antiScreenRecordEnabled = false
     var activeTab = 0
 
     private val webView: WebView
@@ -335,6 +337,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("autoTriggerAdsEnabled", autoTriggerAdsEnabled)
             put("autoTriggerAdsRange", autoTriggerAdsRange.toDouble())
             put("touchOrientationMode", touchOrientationMode)
+            put("antiScreenRecordEnabled", antiScreenRecordEnabled)
             put("boxAimRatio", boxAimRatio.toDouble())
             put("priorityClass", priorityClass)
             put("hasMultipleClasses", classMap.size > 1)

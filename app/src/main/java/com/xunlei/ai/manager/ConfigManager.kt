@@ -69,7 +69,8 @@ data class AppConfig(
     var autoTriggerAdsRange: Float = 180f,
     var touchOrientationMode: Int = 0,
     var useCpuInference: Boolean = false,
-    var cpuThreadCount: Int = 4
+    var cpuThreadCount: Int = 4,
+    var antiScreenRecordEnabled: Boolean = false
 )
 
 object ConfigManager {
@@ -154,7 +155,8 @@ object ConfigManager {
                         autoTriggerAdsRange = obj.optDouble("autoTriggerAdsRange", 180.0).toFloat(),
                         touchOrientationMode = obj.optInt("touchOrientationMode", 0),
                         useCpuInference = obj.optBoolean("useCpuInference", false),
-                        cpuThreadCount = obj.optInt("cpuThreadCount", 4)
+                        cpuThreadCount = obj.optInt("cpuThreadCount", 4),
+                        antiScreenRecordEnabled = obj.optBoolean("antiScreenRecordEnabled", false)
                     )
                 }
             }
@@ -230,6 +232,7 @@ object ConfigManager {
                     put("touchOrientationMode", config.touchOrientationMode)
                     put("useCpuInference", config.useCpuInference)
                     put("cpuThreadCount", config.cpuThreadCount)
+                    put("antiScreenRecordEnabled", config.antiScreenRecordEnabled)
                 }
                 file.writeText(obj.toString(2))
             }
