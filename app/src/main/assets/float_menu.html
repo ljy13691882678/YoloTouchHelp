@@ -273,10 +273,50 @@
             color: var(--primary);
         }
 
-        .slider-input {
+        .custom-slider {
+            position: relative;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            cursor: default;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .custom-slider-track {
             width: 100%;
-            margin: 0;
-            accent-color: var(--primary);
+            height: 4px;
+            background: rgba(226, 232, 240, 0.6);
+            border-radius: 2px;
+            position: relative;
+            pointer-events: none;
+        }
+        .custom-slider-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 2px;
+            pointer-events: none;
+            transition: width 0.05s linear;
+        }
+        .custom-slider-thumb {
+            position: absolute;
+            top: 50%;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid var(--primary);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            z-index: 2;
+            touch-action: none;
+            transition: transform 0.1s ease;
+        }
+        .custom-slider-thumb:active,
+        .custom-slider-thumb.dragging {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.18);
         }
 
         .segmented {
@@ -597,39 +637,197 @@
         }
 
         function sliderRow(options) {
-            const valueId = `value_${options.key}_${String(options.extraId ?? "main").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-            const action = options.type === "int"
-                ? `setInt('${options.key}', this.value)`
-                : `setFloat('${options.key}', this.value)`;
+            const key = options.key;
+            const valueId = `value_${key}_${String(options.extraId ?? "main").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            const sliderId = `slider_${key}_${String(options.extraId ?? "main").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            const percent = (options.value - options.min) / (options.max - options.min) * 100;
             return `
                 <div class="slider-block">
                     <div class="slider-head">
                         <div class="slider-title">${escapeHtml(options.label)}</div>
                         <div class="slider-value" id="${valueId}">${formatValue(options.format, options.value)}</div>
                     </div>
-                    <input class="slider-input" type="range"
-                        min="${options.min}" max="${options.max}" step="${options.step}" value="${options.value}"
-                        oninput="updateRangeValue('${valueId}', this.value, '${options.format}')"
-                        onchange="${action}">
+                    <div class="custom-slider" id="${sliderId}"
+                        data-key="${key}" data-min="${options.min}" data-max="${options.max}"
+                        data-step="${options.step}" data-type="${options.type}" data-format="${options.format}"
+                        data-value-id="${valueId}">
+                        <div class="custom-slider-track">
+                            <div class="custom-slider-fill" style="width: ${percent}%;"></div>
+                        </div>
+                        <div class="custom-slider-thumb" style="left: ${percent}%;"></div>
+                    </div>
                     ${options.note ? `<div class="section-note">${escapeHtml(options.note)}</div>` : ""}
                 </div>
             `;
         }
 
         function customSliderRow(options) {
+            const key = options.key;
             const valueId = `value_${options.key}_${String(options.extraId ?? "main").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            const sliderId = `slider_${key}_${String(options.extraId ?? "main").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+            const percent = (options.value - options.min) / (options.max - options.min) * 100;
             return `
                 <div class="slider-block">
                     <div class="slider-head">
                         <div class="slider-title">${escapeHtml(options.label)}</div>
                         <div class="slider-value" id="${valueId}">${formatValue(options.format, options.value)}</div>
                     </div>
-                    <input class="slider-input" type="range"
-                        min="${options.min}" max="${options.max}" step="${options.step}" value="${options.value}"
-                        oninput="updateRangeValue('${valueId}', this.value, '${options.format}')"
-                        onchange="${options.onchange}">
+                    <div class="custom-slider" id="${sliderId}"
+                        data-key="${key}" data-min="${options.min}" data-max="${options.max}"
+                        data-step="${options.step}" data-onchange="${options.onchange}"
+                        data-value-id="${valueId}">
+                        <div class="custom-slider-track">
+                            <div class="custom-slider-fill" style="width: ${percent}%;"></div>
+                        </div>
+                        <div class="custom-slider-thumb" style="left: ${percent}%;"></div>
+                    </div>
                 </div>
             `;
+        }
+
+        // Custom slider interaction - only respond to thumb drag
+        let activeSlider = null;
+
+        (function initSliderEvents() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', bindSliderEvents);
+            } else {
+                bindSliderEvents();
+            }
+        })();
+
+        function bindSliderEvents() {
+            document.addEventListener('touchstart', handleSliderTouchStart, { passive: false });
+            document.addEventListener('touchmove', handleSliderTouchMove, { passive: false });
+            document.addEventListener('touchend', handleSliderTouchEnd, { passive: false });
+            document.addEventListener('mousedown', handleSliderMouseDown);
+            document.addEventListener('mousemove', handleSliderMouseMove);
+            document.addEventListener('mouseup', handleSliderMouseUp);
+        }
+
+        function getSliderFromTarget(target) {
+            if (!target || !target.classList) return null;
+            // Only allow thumb to be dragged
+            if (target.classList.contains('custom-slider-thumb')) {
+                return target.closest('.custom-slider');
+            }
+            // Do NOT allow track clicks to change value
+            return null;
+        }
+
+        function getPercentFromCoordinate(slider, clientX) {
+            const rect = slider.getBoundingClientRect();
+            const x = clientX - rect.left;
+            return Math.max(0, Math.min(100, (x / rect.width) * 100));
+        }
+
+        function updateSlider(slider, percent) {
+            const min = parseFloat(slider.dataset.min);
+            const max = parseFloat(slider.dataset.max);
+            const step = parseFloat(slider.dataset.step);
+            const format = slider.dataset.format;
+            const valueId = slider.dataset.valueId;
+            const key = slider.dataset.key;
+
+            let value = min + (percent / 100) * (max - min);
+            if (step > 0) {
+                const steps = Math.round((value - min) / step);
+                value = min + steps * step;
+                value = Math.max(min, Math.min(max, value));
+            }
+            // Recalculate percent from snapped value
+            const snappedPercent = ((value - min) / (max - min)) * 100;
+
+            // Update visual
+            const fill = slider.querySelector('.custom-slider-fill');
+            const thumb = slider.querySelector('.custom-slider-thumb');
+            if (fill) fill.style.width = `${snappedPercent}%`;
+            if (thumb) thumb.style.left = `${snappedPercent}%`;
+
+            // Update value text
+            updateRangeValue(valueId, value, format);
+
+            // Save to state
+            state[key] = value;
+        }
+
+        function commitSliderChange(slider) {
+            if (!slider) return;
+            const key = slider.dataset.key;
+            const type = slider.dataset.type;
+            const value = state[key];
+            if (slider.dataset.onchange) {
+                // Replace `this.value` with the actual value for backward compatibility
+                const code = slider.dataset.onchange.replace(/this\.value/g, value);
+                try {
+                    eval(code);
+                } catch (e) {
+                    console.error('slider onchange error', e);
+                }
+            } else if (type === 'int') {
+                setInt(key, value);
+            } else {
+                setFloat(key, value);
+            }
+        }
+
+        function handleSliderTouchStart(e) {
+            const target = e.touches[0].target;
+            const slider = getSliderFromTarget(target);
+            if (!slider) return;
+
+            activeSlider = {
+                slider: slider,
+                type: 'touch'
+            };
+            target.classList.add('dragging');
+            e.preventDefault();
+        }
+
+        function handleSliderTouchMove(e) {
+            if (!activeSlider || activeSlider.type !== 'touch') return;
+            const touch = e.touches[0];
+            const percent = getPercentFromCoordinate(activeSlider.slider, touch.clientX);
+            updateSlider(activeSlider.slider, percent);
+            e.preventDefault();
+        }
+
+        function handleSliderTouchEnd(e) {
+            if (!activeSlider || activeSlider.type !== 'touch') return;
+            const thumb = activeSlider.slider.querySelector('.custom-slider-thumb');
+            if (thumb) thumb.classList.remove('dragging');
+            commitSliderChange(activeSlider.slider);
+            activeSlider = null;
+            e.preventDefault();
+        }
+
+        function handleSliderMouseDown(e) {
+            const target = e.target;
+            const slider = getSliderFromTarget(target);
+            if (!slider) return;
+
+            activeSlider = {
+                slider: slider,
+                type: 'mouse'
+            };
+            target.classList.add('dragging');
+            e.preventDefault();
+        }
+
+        function handleSliderMouseMove(e) {
+            if (!activeSlider || activeSlider.type !== 'mouse') return;
+            const percent = getPercentFromCoordinate(activeSlider.slider, e.clientX);
+            updateSlider(activeSlider.slider, percent);
+            e.preventDefault();
+        }
+
+        function handleSliderMouseUp(e) {
+            if (!activeSlider || activeSlider.type !== 'mouse') return;
+            const thumb = activeSlider.slider.querySelector('.custom-slider-thumb');
+            if (thumb) thumb.classList.remove('dragging');
+            commitSliderChange(activeSlider.slider);
+            activeSlider = null;
+            e.preventDefault();
         }
 
         function segmentedRow(title, key, value, items) {
