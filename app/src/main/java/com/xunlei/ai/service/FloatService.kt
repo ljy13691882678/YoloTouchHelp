@@ -187,7 +187,6 @@ class FloatService : Service() {
     private var autoTriggerAdsEnabled = false
     private var autoTriggerAdsRange = 180f
     private var touchOrientationMode = TOUCH_ORIENTATION_AUTO
-private var antiScreenRecordEnabled = false
 
 private var triggerOverlay: TriggerOverlayView? = null
     private var triggerOverlayAdded = false
@@ -317,7 +316,6 @@ private var triggerOverlay: TriggerOverlayView? = null
         triggerShowArea = cfg.triggerShowArea
         autoStopEnabled = cfg.autoStopEnabled
         touchOrientationMode = cfg.touchOrientationMode
-        antiScreenRecordEnabled = cfg.antiScreenRecordEnabled
         aimHoldEnabled = cfg.aimHoldEnabled
         recoilEnabled = cfg.recoilEnabled
         recoilStrength = cfg.recoilStrength
@@ -457,7 +455,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         val size = dp(35)
         ballView = FloatBallView(this)
         ProjectionHolder.floatBallView = ballView
-        ballParams = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or antiScreenRecordFlag()).apply {
+        ballParams = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).apply {
             gravity = Gravity.TOP or Gravity.START; x = 50; y = 200
         }
         ballView.onMoveCallback = { dx, dy -> ballParams?.let { it.x += dx; it.y += dy; wm.updateViewLayout(ballView, it) } }
@@ -480,7 +478,7 @@ private var triggerOverlay: TriggerOverlayView? = null
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or antiScreenRecordFlag())
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         wm.addView(overlayView, overlayParams); overlayAdded = true
     }
 
@@ -594,7 +592,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         triggerOverlay = TriggerOverlayView(this)
         ProjectionHolder.triggerOverlayView = triggerOverlay
         val size = dp(triggerTouchRange.coerceAtLeast(30))
-        val p = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or antiScreenRecordFlag())
+        val p = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         p.gravity = Gravity.TOP or Gravity.START
         p.x = screenWidth / 2 - size / 2; p.y = screenHeight / 2 - size / 2
         triggerAreaX = p.x; triggerAreaY = p.y
@@ -609,7 +607,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         val ov = triggerOverlay ?: return
         val p = ov.layoutParams as? WindowManager.LayoutParams ?: return
         if (triggerShowArea) { ov.alpha = 1f } else { ov.alpha = 0f }
-        p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or antiScreenRecordFlag()
+        p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
         try { wm.updateViewLayout(ov, p) } catch (_: Exception) {}
     }
 
@@ -625,7 +623,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         val size = dp(guiPanel.aimTouchSize) * 2
         touchDisplayView = TouchDisplayView(this)
         ProjectionHolder.touchDisplayView = touchDisplayView
-        val p = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or antiScreenRecordFlag())
+        val p = makeParams(size, size, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
         p.gravity = Gravity.TOP or Gravity.START; p.x = screenWidth / 2 - size / 2; p.y = screenHeight / 2 - size / 2
         touchDisplayView!!.dotRadius = dp(guiPanel.aimTouchSize).toFloat()
         wm.addView(touchDisplayView, p); touchDisplayAdded = true
@@ -736,7 +734,6 @@ private var triggerOverlay: TriggerOverlayView? = null
             guiPanel.kalmanMatchIouThreshold = kalmanMatchIouThreshold
             guiPanel.autoStopEnabled = autoStopEnabled; guiPanel.aimHoldEnabled = aimHoldEnabled
             guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
-            guiPanel.antiScreenRecordEnabled = antiScreenRecordEnabled
             guiPanel.buildUI()
             guiPanel.visibility = View.VISIBLE; guiPanel.alpha = 0f; guiPanel.scaleX = 0.85f; guiPanel.scaleY = 0.85f
             guiPanel.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(200).start(); guiVisible = true; return
@@ -798,12 +795,11 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.convergeThresh = convergeThresh.toInt()
         guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
         guiPanel.touchOrientationMode = touchOrientationMode
-        guiPanel.antiScreenRecordEnabled = antiScreenRecordEnabled
 
         guiPanel.buildUI()
         val initialWidth = ((280 * resources.displayMetrics.density).toInt()).coerceAtMost((screenWidth * 0.92f).toInt().coerceAtLeast(dp(240)))
         val initialHeight = ((screenHeight * 0.68f).toInt()).coerceIn(dp(240).coerceAtMost((screenHeight * 0.88f).toInt().coerceAtLeast(dp(240))), (screenHeight * 0.88f).toInt().coerceAtLeast(dp(240)))
-        guiParams = makeParams(initialWidth, initialHeight, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or antiScreenRecordFlag()).apply {
+        guiParams = makeParams(initialWidth, initialHeight, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL).apply {
             gravity = Gravity.TOP or Gravity.START; x = 60; y = 200
         }
 
@@ -870,7 +866,7 @@ private var triggerOverlay: TriggerOverlayView? = null
             if (touchDisplayAdded) {
                 val lp = touchDisplayView?.layoutParams as? WindowManager.LayoutParams
                 if (lp != null) {
-                    lp.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or antiScreenRecordFlag()
+                    lp.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                     touchDisplayView?.alpha = if (show) 1f else 0f
                     try { wm.updateViewLayout(touchDisplayView, lp) } catch (_: Exception) {}
                 }
@@ -883,11 +879,6 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.onRecordEnabledChanged = { on -> toggleRecording(on) }
         guiPanel.onAutoSaveDatasetChanged = { on -> autoSaveDataset = on }
         guiPanel.onTouchOrientationModeChanged = { mode -> touchOrientationMode = mode; guiPanel.touchOrientationMode = mode; applyTouchOrientationConfig(); ConfigManager.updateConfig { touchOrientationMode = mode } }
-        guiPanel.onAntiScreenRecordChanged = { enabled ->
-            antiScreenRecordEnabled = enabled; guiPanel.antiScreenRecordEnabled = enabled
-            updateAllViewFlagsForSecurity()
-            ConfigManager.updateConfig { antiScreenRecordEnabled = enabled }
-        }
         guiPanel.onAimClassesChanged = { classes -> aimClasses = classes.toMutableSet(); aimController.aimClasses = classes.toMutableSet(); ConfigManager.updateConfig { aimClasses = classes } }
         guiPanel.onPriorityClassChanged = { cls -> priorityClass = cls; aimController.priorityClass = cls; ConfigManager.updateConfig { priorityClass = cls } }
         guiPanel.onClassAimOffsetChanged = { id, value -> classAimOffsets = classAimOffsets.toMutableMap().apply { put(id, value) }; aimController.classAimOffsets = classAimOffsets; ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets } }
@@ -950,7 +941,7 @@ private var triggerOverlay: TriggerOverlayView? = null
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or antiScreenRecordFlag()).apply {
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS).apply {
             gravity = Gravity.TOP or Gravity.START
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -1170,53 +1161,10 @@ private var triggerOverlay: TriggerOverlayView? = null
     }
 
     private fun makeParams(w: Int, h: Int, flags: Int) = WindowManager.LayoutParams(w, h, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, flags, PixelFormat.TRANSLUCENT)
-    private fun antiScreenRecordFlag() = if (antiScreenRecordEnabled) WindowManager.LayoutParams.FLAG_SECURE else 0
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     private fun createNotificationChannel() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { val ch = NotificationChannel(CH_ID, "迅雷AI", NotificationManager.IMPORTANCE_LOW); (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch) } }
     private fun buildNotification() = NotificationCompat.Builder(this, CH_ID).setContentTitle("迅雷AI").setContentText("运行中").setSmallIcon(R.drawable.ic_notification).build()
-
-    // 重新为所有窗口设置 FLAG_SECURE 防录屏标记
-    private fun updateAllViewFlagsForSecurity() {
-        val secureFlag = if (antiScreenRecordEnabled) WindowManager.LayoutParams.FLAG_SECURE else 0
-        // 给所有悬浮球、覆盖层、面板添加安全标记，防止被录屏
-        // ballView
-        if (ballAdded && ballView != null && ::ballParams.isInitialized) {
-            ballParams.flags = ballParams.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-            wm.updateViewLayout(ballView, ballParams)
-        }
-        // overlayView (推理显示框)
-        if (overlayAdded && overlayView != null && ::overlayParams.isInitialized) {
-            overlayParams.flags = overlayParams.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-            wm.updateViewLayout(overlayView, overlayParams)
-        }
-        // triggerOverlay (触发区域框)
-        if (triggerOverlayAdded && triggerOverlay != null) {
-            triggerOverlay?.layoutParams?.let { p ->
-                p.flags = p.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-                wm.updateViewLayout(triggerOverlay, p)
-            }
-        }
-        // touchDisplayView (触摸点显示)
-        if (touchDisplayAdded && touchDisplayView != null) {
-            touchDisplayView?.layoutParams?.let { p ->
-                p.flags = p.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-                wm.updateViewLayout(touchDisplayView, p)
-            }
-        }
-        // guiPanel (悬浮球菜单面板)
-        if (guiAdded && guiPanel != null && ::guiParams.isInitialized) {
-            guiParams.flags = guiParams.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-            wm.updateViewLayout(guiPanel, guiParams)
-        }
-        // areaSettingsView (区域设置面板)
-        if (areaSettingsAdded && areaSettingsView != null) {
-            areaSettingsView?.layoutParams?.let { p ->
-                p.flags = p.flags and WindowManager.LayoutParams.FLAG_SECURE.inv() or secureFlag
-                wm.updateViewLayout(areaSettingsView, p)
-            }
-        }
-    }
 
     private fun actualDisplayRotation(): Int = try { wm.defaultDisplay.rotation } catch (_: Exception) { Surface.ROTATION_0 }
 

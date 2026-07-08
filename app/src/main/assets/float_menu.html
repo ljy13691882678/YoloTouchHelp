@@ -1093,7 +1093,6 @@
                         <div class="chip-list">${state.classEntries.map(c => `<button class="chip${(!state.showDetectionClassIds.length || state.showDetectionClassIds.includes(c.id)) ? " active" : ""}" onclick="toggleDetectionClass(${c.id})">${escapeHtml(c.name)}</button>`).join("")}</div>
                     </div>` : ""}
                     ${switchRow("显示中心点", "showCenterDot", state.showCenterDot)}
-                    ${switchRow("防录屏", "antiScreenRecordEnabled", state.antiScreenRecordEnabled, "FLAG_SECURE — 悬浮球、推理框、面板内容无法被录屏捕捉")}
                     ${switchRow("录屏", "recordEnabled", state.recordEnabled, "H265 编码，60 帧，保存到 Pictures/Screenshots")}
                     ${switchRow("自动保存数据集", "autoSaveDataset", state.autoSaveDataset, "检测到目标时自动截图+YOLO标注，保存到应用外部存储")}
                 </div>
