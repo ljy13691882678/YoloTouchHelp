@@ -22,18 +22,12 @@ class TouchInjector {
     private var injectMethod: Method? = null
     private var inputManager: Any? = null
 
-    // ── On-demand background finger ──
-    // Injected only when aiming starts, removed when aiming stops.
-    // A permanent ACTION_DOWN (never lifting) triggers the system's
-    // ghost-touch detection, causing the entire touchscreen to become
-    // unresponsive ("屏幕断触"). On-demand avoids this entirely.
+    // ── Pure single-touch aim injection ──
+    // The aim finger is injected as a standalone ACTION_DOWN → MOVE → UP
+    // sequence. Physical touch and injected touch coexist because they
+    // come from different input sources with non-overlapping pointer IDs.
     private val rng = Random
-    private val bgId = 3 + rng.nextInt(6)        // 3~8
-    private var bgX = 3f + rng.nextFloat() * 6f  // 3~9px
-    private var bgY = 3f + rng.nextFloat() * 6f
-    private var bgDownTime = 0L
-    private var bgActive = false                  // true when bg finger is down
-    private val touchId = 5 + rng.nextInt(8)     // 5~12, aim finger
+    private val touchId = 5 + rng.nextInt(8)     // 5~12, avoids physical touch IDs 0~4
     private var drawingPointerId = -1
     private var downTime = 0L
 
@@ -55,39 +49,7 @@ class TouchInjector {
         return c
     }
 
-    private fun bgCoord(): MotionEvent.PointerCoords {
-        bgX += (rng.nextFloat() - 0.5f) * 0.6f
-        bgY += (rng.nextFloat() - 0.5f) * 0.6f
-        bgX = bgX.coerceIn(2f, 10f)
-        bgY = bgY.coerceIn(2f, 10f)
-        return coord(bgX, bgY)
-    }
-
     private fun randTapDelay(): Int = 5 + rng.nextInt(14)
-
-    /** Inject the background finger (ACTION_DOWN). Called at aim start. */
-    private fun injectBgDown() {
-        if (bgActive) return
-        bgDownTime = SystemClock.uptimeMillis()
-        val bgDown = MotionEvent.obtain(bgDownTime, bgDownTime, MotionEvent.ACTION_DOWN, 1,
-            arrayOf(ptr(bgId)), arrayOf(bgCoord()),
-            0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-        injectMethod?.invoke(inputManager, bgDown, INJECT_MODE_ASYNC)
-        bgDown.recycle()
-        bgActive = true
-    }
-
-    /** Remove the background finger (ACTION_UP). Called at aim stop. */
-    private fun injectBgUp() {
-        if (!bgActive) return
-        val now = SystemClock.uptimeMillis()
-        val bgUp = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_UP, 1,
-            arrayOf(ptr(bgId)), arrayOf(bgCoord()),
-            0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-        injectMethod?.invoke(inputManager, bgUp, INJECT_MODE_ASYNC)
-        bgUp.recycle()
-        bgActive = false
-    }
 
     fun init(): Boolean {
         if (available) return true
@@ -110,13 +72,8 @@ class TouchInjector {
             inputManager = raw
             injectMethod = raw.javaClass.getMethod("injectInputEvent", InputEvent::class.java, Int::class.java)
 
-            // NO permanent background finger here.
-            // It is injected on-demand in swipe() and removed in lift().
-            // A permanent ACTION_DOWN triggers system ghost-touch detection
-            // which makes the entire touchscreen unresponsive.
-
             available = true
-            Log.d(TAG, "ready, bgId=$bgId touchId=$touchId")
+            Log.d(TAG, "ready, touchId=$touchId")
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Init: ${e.message}"); destroy(); return false
@@ -124,30 +81,24 @@ class TouchInjector {
     }
 
     fun keepAlive() {
-        // No-op: background finger is on-demand, not permanent.
+        // No-op: no background finger to keep alive.
     }
 
     fun tap(x: Int, y: Int) {
         if (!available) return
         val now = SystemClock.uptimeMillis()
         val delay = randTapDelay()
-        val shift = 1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
         try {
-            val wasBgActive = bgActive
-            if (!wasBgActive) injectBgDown()
-            val bgC = bgCoord()
-            val targetC = coord(x.toFloat(), y.toFloat())
-            val down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN or shift, 2,
-                arrayOf(ptr(bgId), ptr(touchId)), arrayOf(bgC, targetC),
+            val c = coord(x.toFloat(), y.toFloat())
+            val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1,
+                arrayOf(ptr(touchId)), arrayOf(c),
                 0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
-            val up = MotionEvent.obtain(bgDownTime, now + delay, MotionEvent.ACTION_POINTER_UP or shift, 2,
-                arrayOf(ptr(bgId), ptr(touchId)), arrayOf(bgC, targetC),
+            val up = MotionEvent.obtain(now, now + delay, MotionEvent.ACTION_UP, 1,
+                arrayOf(ptr(touchId)), arrayOf(c),
                 0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
             injectMethod?.invoke(inputManager, down, INJECT_MODE_ASYNC)
             injectMethod?.invoke(inputManager, up, INJECT_MODE_ASYNC)
             down.recycle(); up.recycle()
-            // Only remove bg if we created it (not if aim is already active)
-            if (!wasBgActive) injectBgUp()
         } catch (e: Exception) { Log.e(TAG, "tap fail: ${e.message}"); available = false }
     }
 
@@ -155,9 +106,9 @@ class TouchInjector {
         if (!available || drawingPointerId < 0) return
         val now = SystemClock.uptimeMillis()
         try {
-            val move = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_MOVE, 2,
-                arrayOf(ptr(bgId), ptr(drawingPointerId)),
-                arrayOf(bgCoord(), coord(x.toFloat(), y.toFloat())),
+            val move = MotionEvent.obtain(downTime, now, MotionEvent.ACTION_MOVE, 1,
+                arrayOf(ptr(drawingPointerId)),
+                arrayOf(coord(x.toFloat(), y.toFloat())),
                 0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
             injectMethod?.invoke(inputManager, move, INJECT_MODE_ASYNC); move.recycle()
         } catch (e: Exception) { Log.e(TAG, "moveTo fail: ${e.message}") }
@@ -166,24 +117,19 @@ class TouchInjector {
     fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int = 1) {
         if (!available) return
         val now = SystemClock.uptimeMillis()
-        val shift = 1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
         try {
             if (drawingPointerId < 0) {
-                // First touch: inject background finger, then aim finger on top
-                injectBgDown()
                 drawingPointerId = touchId
                 downTime = now
-                val bgC = bgCoord()
-                val down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN or shift, 2,
-                    arrayOf(ptr(bgId), ptr(drawingPointerId)),
-                    arrayOf(bgC, coord(x1.toFloat(), y1.toFloat())),
+                val down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1,
+                    arrayOf(ptr(drawingPointerId)),
+                    arrayOf(coord(x1.toFloat(), y1.toFloat())),
                     0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
                 injectMethod?.invoke(inputManager, down, INJECT_MODE_ASYNC); down.recycle()
             }
-            // ACTION_MOVE to target position
-            val move = MotionEvent.obtain(bgDownTime, now + durationMs, MotionEvent.ACTION_MOVE, 2,
-                arrayOf(ptr(bgId), ptr(drawingPointerId)),
-                arrayOf(bgCoord(), coord(x2.toFloat(), y2.toFloat())),
+            val move = MotionEvent.obtain(downTime, now + durationMs, MotionEvent.ACTION_MOVE, 1,
+                arrayOf(ptr(drawingPointerId)),
+                arrayOf(coord(x2.toFloat(), y2.toFloat())),
                 0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
             injectMethod?.invoke(inputManager, move, INJECT_MODE_ASYNC); move.recycle()
         } catch (e: Exception) { Log.e(TAG, "swipe fail: ${e.message}"); available = false }
@@ -193,25 +139,17 @@ class TouchInjector {
         if (!available || drawingPointerId < 0) return
         val now = SystemClock.uptimeMillis()
         val upDelay = 3 + rng.nextInt(6)
-        val shift = 1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
         try {
-            val bgC = bgCoord()
-            val up = MotionEvent.obtain(bgDownTime, now + upDelay, MotionEvent.ACTION_POINTER_UP or shift, 2,
-                arrayOf(ptr(bgId), ptr(drawingPointerId)),
-                arrayOf(bgC, bgC),
+            val up = MotionEvent.obtain(downTime, now + upDelay, MotionEvent.ACTION_UP, 1,
+                arrayOf(ptr(drawingPointerId)),
+                arrayOf(coord(0f, 0f)),
                 0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
             injectMethod?.invoke(inputManager, up, INJECT_MODE_ASYNC); up.recycle()
             drawingPointerId = -1
-            // Remove background finger after aim finger is lifted
-            injectBgUp()
         } catch (e: Exception) { Log.e(TAG, "lift fail: ${e.message}") }
     }
 
     fun destroy() {
-        // Clean up: lift bg if still active
-        if (bgActive) {
-            try { injectBgUp() } catch (_: Exception) {}
-        }
         available = false; drawingPointerId = -1
         inputManager = null; injectMethod = null
     }
