@@ -34,11 +34,15 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
     public static final int INPUT_METHOD_INPUT_MANAGER = 1;
     private int inputMethod = INPUT_METHOD_UINPUT;
 
-    // ── Anti-detection: randomized per-session parameters ──
+    // ── On-demand background finger ──
+    // Injected only when aiming starts, removed when aiming stops.
+    // A permanent ACTION_DOWN triggers system ghost-touch detection
+    // which makes the entire touchscreen unresponsive.
     private final Random rng = new Random();
-    private final int bgId;          // background finger ID (3~8), always down
+    private final int bgId;          // background finger ID (3~8)
     private float bgX, bgY;         // jittered background position
     private long bgDownTime;
+    private boolean bgActive = false; // true when bg finger is down
     private final int touchId;     // drawing pointer ID (5~12), always different from bg
     private int drawingPointerId = -1;
     private long downTime = 0;
@@ -106,6 +110,40 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
         return 5 + rng.nextInt(14);
     }
 
+    /** Inject the background finger (ACTION_DOWN). Called at aim start. */
+    private void injectBgDown() {
+        if (bgActive || injectMethod == null || inputManager == null) return;
+        bgDownTime = SystemClock.uptimeMillis();
+        MotionEvent bgDown = MotionEvent.obtain(bgDownTime, bgDownTime, MotionEvent.ACTION_DOWN, 1,
+            new MotionEvent.PointerProperties[]{ptr(bgId)},
+            new MotionEvent.PointerCoords[]{bgCoord()},
+            0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        try {
+            injectMethod.invoke(inputManager, bgDown, INJECT_MODE_ASYNC);
+            bgActive = true;
+        } catch (Exception e) {
+            Log.e(TAG, "injectBgDown: " + e.getMessage());
+        }
+        bgDown.recycle();
+    }
+
+    /** Remove the background finger (ACTION_UP). Called at aim stop. */
+    private void injectBgUp() {
+        if (!bgActive || injectMethod == null || inputManager == null) return;
+        long now = SystemClock.uptimeMillis();
+        MotionEvent bgUp = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_UP, 1,
+            new MotionEvent.PointerProperties[]{ptr(bgId)},
+            new MotionEvent.PointerCoords[]{bgCoord()},
+            0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        try {
+            injectMethod.invoke(inputManager, bgUp, INJECT_MODE_ASYNC);
+            bgActive = false;
+        } catch (Exception e) {
+            Log.e(TAG, "injectBgUp: " + e.getMessage());
+        }
+        bgUp.recycle();
+    }
+
     public void onCreate() {
         instance = this;
         Log.d(TAG, "RemoteInjectorService onCreate, pid=" + Process.myPid() + " bgId=" + bgId + " touchId=" + touchId);
@@ -148,15 +186,10 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
             Method injectInputEvent = android.hardware.input.InputManager.class.getMethod(
                 "injectInputEvent", InputEvent.class, int.class);
 
-            // Inject a permanent background finger so the aim finger
-            // (ACTION_POINTER_DOWN) is always a secondary pointer.
-            bgDownTime = SystemClock.uptimeMillis();
-            MotionEvent bgDown = MotionEvent.obtain(bgDownTime, bgDownTime, MotionEvent.ACTION_DOWN, 1,
-                new MotionEvent.PointerProperties[]{ptr(bgId)},
-                new MotionEvent.PointerCoords[]{bgCoord()},
-                0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-            injectInputEvent.invoke(inputMan, bgDown, INJECT_MODE_ASYNC);
-            bgDown.recycle();
+            // NO permanent background finger here.
+            // It is injected on-demand in swipe() and removed in lift().
+            // A permanent ACTION_DOWN triggers system ghost-touch detection
+            // which makes the entire touchscreen unresponsive.
 
             inputManager = inputMan;
             injectMethod = injectInputEvent;
@@ -171,20 +204,10 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
         return false;
     }
 
-    // No-op for uinput: already handled by native single touch.
-    // For InputManager: jitter background finger
+    // No-op for both uinput and InputManager.
+    // Background finger is on-demand, not permanent — no need to keep alive.
     public void keepAlive() {
-        if (!available || inputMethod == INPUT_METHOD_UINPUT) return;
-        try {
-            MotionEvent m = MotionEvent.obtain(bgDownTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, 1,
-                new MotionEvent.PointerProperties[]{ptr(bgId)},
-                new MotionEvent.PointerCoords[]{bgCoord()},
-                0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-            injectMethod.invoke(inputManager, m, INJECT_MODE_ASYNC);
-            m.recycle();
-        } catch (Exception e) {
-            // ignore
-        }
+        // No-op
     }
 
     public void tap(int x, int y) throws android.os.RemoteException {
@@ -199,6 +222,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                 try { Thread.sleep(delay); } catch (InterruptedException e) {}
                 uinputSendUp(uinputFd, touchId);
             } else {
+                boolean wasBgActive = bgActive;
+                if (!wasBgActive) injectBgDown();
                 MotionEvent.PointerCoords bgC = bgCoord();
                 MotionEvent.PointerCoords targetC = coord(x, y);
                 MotionEvent down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN | shift, 2,
@@ -212,6 +237,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                 injectMethod.invoke(inputManager, down, INJECT_MODE_ASYNC);
                 injectMethod.invoke(inputManager, up, INJECT_MODE_ASYNC);
                 down.recycle(); up.recycle();
+                // Only remove bg if we created it (not if aim is already active)
+                if (!wasBgActive) injectBgUp();
             }
         } catch (Exception e) {
             throw new android.os.RemoteException(e.getMessage());
@@ -239,7 +266,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
             } else {
                 int shift = 1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT;
                 if (!pointerDown && x1 == x2 && y1 == y2) {
-                    // First touch: ACTION_POINTER_DOWN on top of background finger
+                    // First touch: inject background finger, then aim finger on top
+                    injectBgDown();
                     drawingPointerId = touchId;
                     downTime = now;
                     pointerDown = true;
@@ -260,7 +288,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                     injectMethod.invoke(inputManager, move, INJECT_MODE_ASYNC);
                     move.recycle();
                 } else {
-                    // Standalone swipe: POINTER_DOWN → MOVE → POINTER_UP on bg
+                    // Standalone swipe: inject bg, then POINTER_DOWN → MOVE → POINTER_UP
+                    injectBgDown();
                     MotionEvent.PointerCoords bgC = bgCoord();
                     MotionEvent down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN | shift, 2,
                         new MotionEvent.PointerProperties[]{ptr(bgId), ptr(touchId)},
@@ -325,6 +354,8 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
             }
             pointerDown = false;
             drawingPointerId = -1;
+            // Remove background finger after aim finger is lifted
+            injectBgUp();
         } catch (Exception e) {
             throw new android.os.RemoteException(e.getMessage());
         }
@@ -462,6 +493,10 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
         Log.d(TAG, "destroy called");
         if (clientDeathRecipient != null) {
             clientDeathRecipient = null;
+        }
+        // Clean up: lift bg if still active
+        if (bgActive) {
+            injectBgUp();
         }
         available = false;
         closeUinput();
