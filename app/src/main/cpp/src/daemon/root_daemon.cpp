@@ -123,6 +123,10 @@ static void handle_command(const char* cmd) {
         puts("OK");
     }
     else if (strcmp(buf, "OPEN_UINPUT") == 0) {
+        // Root mode: don't grab physical device (EVIOCGRAB is a major
+        // anti-cheat detection vector). Physical touches go through the
+        // real device, injected touches through uinput. Both coexist.
+        touch_set_no_grab(true);
         if (touch_init(g_screen_w, g_screen_h)) {
             int fd = touch_get_output_fd();
             printf("OK:%d\n", fd);
