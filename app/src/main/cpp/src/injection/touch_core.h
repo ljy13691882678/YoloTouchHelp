@@ -24,6 +24,12 @@ void touch_close(void);
 bool touch_is_initialized(void);
 int  touch_get_output_fd(void);
 
+// Call BEFORE touch_init() to disable device grab + only upload virtual fingers.
+// Used by Shizuku path so physical touches go through the real device
+// while injected touches go through uinput — both coexist.
+// Root path (default) keeps EVIOCGRAB + uploads all fingers.
+void touch_set_no_grab(bool enable);
+
 // Reader threads (for zone detection)
 void touch_start_readers(void);
 void touch_stop_readers(void);

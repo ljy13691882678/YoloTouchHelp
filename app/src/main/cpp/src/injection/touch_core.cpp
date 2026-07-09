@@ -92,6 +92,11 @@ static std::mutex g_mutex;
 static int g_outputFd = 0;
 static bool g_initialized = false;
 
+// When true (Shizuku path): don't grab physical device, only upload
+// virtual fingers. Physical touches go through the real device directly.
+// When false (root path, default): grab physical device, upload all fingers.
+static bool g_no_grab = false;
+
 // Screen params
 static int g_screen_w = 0, g_screen_h = 0;
 static int g_rotation = 0;
@@ -274,6 +279,20 @@ static void upload() {
         TouchObj& finger = g_devices[0].fingers[fi];
         bool wasUploaded = g_uploadedFingerDown[0][fi];
         const int slot = fi;
+
+        // ── Shizuku (no_grab) path: skip physical fingers ──
+        // Physical touches are already reported by the real device.
+        // Only upload virtual fingers so they coexist with physical.
+        if (g_no_grab) {
+            if (!finger.isVirtual) {
+                if (wasUploaded) {
+                    pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
+                    pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, -1);
+                    g_uploadedFingerDown[0][fi] = false;
+                }
+                continue;
+            }
+        }
 
         if (finger.isDown) {
             // ── Apply exponential smoothing for virtual fingers ──
@@ -588,7 +607,12 @@ static void* deviceReader(void* arg) {
             }
 
             if (ie.type == EV_SYN && ie.code == SYN_REPORT) {
-                upload();
+                // Root path: forward physical touches to uinput
+                // Shizuku (no_grab) path: physical touches go through
+                // the real device, uinput only gets virtual fingers
+                if (!g_no_grab) {
+                    upload();
+                }
             }
         }
     }
@@ -645,7 +669,9 @@ bool touch_init(int screenW, int screenH) {
         if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &device.absX) == 0 &&
             ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &device.absY) == 0) {
             device.fd = fd;
-            ioctl(fd, EVIOCGRAB, GRAB);
+            if (!g_no_grab) {
+                ioctl(fd, EVIOCGRAB, GRAB);
+            }
             g_devices.push_back(device);
             LOGD("touch device %s max=%d,%d", path, device.absX.maximum, device.absY.maximum);
         } else {
@@ -712,6 +738,11 @@ void touch_stop_readers(void) {
         pthread_join(t, nullptr);
     g_reader_threads.clear();
     LOGD("Stopped all readers");
+}
+
+void touch_set_no_grab(bool enable) {
+    g_no_grab = enable;
+    LOGD("touch_set_no_grab: %d", enable);
 }
 
 void touch_set_screen_params(int w, int h, int rotation) {
