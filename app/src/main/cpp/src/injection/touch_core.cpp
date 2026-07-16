@@ -28,6 +28,7 @@
 #include <mutex>
 #include <vector>
 #include <atomic>
+#include <algorithm>
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -57,6 +58,7 @@ struct Vec2 {
 
 struct TouchObj {
     Vec2 pos{};           // current (smoothed) position
+    Vec2 prevPos{};       // previous frame position (for speed calc)
     Vec2 targetPos{};     // where we want to be
     int id = 0;
     bool isDown = false;
@@ -265,9 +267,12 @@ static void upload() {
     int activeFingerCount = 0;
     bool hasActiveFinger = false;
 
-    // Per-frame smoothing factor variation (±15%)
-    float smoothFactor = kSmoothFactorBase * (0.85f + randFloat() * 0.3f);
-    smoothFactor = std::clamp(smoothFactor, 0.25f, 0.45f);
+    // [FIX] 获取当前时间戳用于填充 input_event.time，避免 time 始终为 0
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    struct timeval tv;
+    tv.tv_sec = ts.tv_sec;
+    tv.tv_usec = ts.tv_nsec / 1000;
 
     // Slow pressure drift (±2 per frame, bounded 120~180)
     g_pressure_drift += randFloatSym() * 2.0f;
@@ -275,14 +280,16 @@ static void upload() {
     int pressureBase = g_pressure_base + static_cast<int>(g_pressure_drift);
     pressureBase = std::clamp(pressureBase, 120, 180);
 
+    // 设备坐标范围，用于速度限制
+    const int devMaxRange = std::max(1, std::max(g_devices[0].absX.maximum, g_devices[0].absY.maximum));
+    const float maxStepPerFrame = devMaxRange * 0.025f;  // 单帧最大移动 2.5% 设备范围
+
     for (int fi = 0; fi < maxF; ++fi) {
         TouchObj& finger = g_devices[0].fingers[fi];
         bool wasUploaded = g_uploadedFingerDown[0][fi];
         const int slot = fi;
 
         // ── Shizuku (no_grab) path: skip physical fingers ──
-        // Physical touches are already reported by the real device.
-        // Only upload virtual fingers so they coexist with physical.
         if (g_no_grab) {
             if (!finger.isVirtual) {
                 if (wasUploaded) {
@@ -295,17 +302,44 @@ static void upload() {
         }
 
         if (finger.isDown) {
-            // ── Apply exponential smoothing for virtual fingers ──
+            float fingerSpeed = 0.0f;
+
+            // ── [FIX] 自适应指数平滑：远快近慢，精细收尾 ──
             if (finger.isVirtual) {
+                finger.prevPos = finger.pos;  // 保存旧位置用于速度计算
+
                 float dx = finger.targetPos.x - finger.pos.x;
                 float dy = finger.targetPos.y - finger.pos.y;
-                float dist2 = dx * dx + dy * dy;
-                if (dist2 > 0.5f) {
-                    finger.pos.x += dx * smoothFactor;
-                    finger.pos.y += dy * smoothFactor;
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                // 自适应平滑因子：远距离快速逼近，近距离精细微调
+                float adaptiveFactor;
+                if (dist > 200.0f) {
+                    adaptiveFactor = 0.58f + randFloat() * 0.14f;      // 0.58~0.72
+                } else if (dist > 50.0f) {
+                    adaptiveFactor = 0.38f + randFloat() * 0.14f;      // 0.38~0.52
+                } else if (dist > 10.0f) {
+                    adaptiveFactor = 0.18f + randFloat() * 0.14f;      // 0.18~0.32
                 } else {
-                    finger.pos = finger.targetPos;
+                    adaptiveFactor = 0.06f + randFloat() * 0.10f;      // 0.06~0.16
                 }
+
+                // 速度限制：避免单帧跳跃过大导致不自然
+                if (dist > 0.5f) {
+                    float step = dist * adaptiveFactor;
+                    if (step > maxStepPerFrame) step = maxStepPerFrame;
+                    float actualFactor = step / dist;
+                    finger.pos.x += dx * actualFactor;
+                    finger.pos.y += dy * actualFactor;
+                } else {
+                    // 极近距离：柔和吸附，避免硬跳变
+                    finger.pos.x += dx * 0.45f + randFloatSym() * 0.25f;
+                    finger.pos.y += dy * 0.45f + randFloatSym() * 0.25f;
+                }
+
+                float moveDx = finger.pos.x - finger.prevPos.x;
+                float moveDy = finger.pos.y - finger.prevPos.y;
+                fingerSpeed = std::sqrt(moveDx * moveDx + moveDy * moveDy);
             }
 
             hasActiveFinger = true;
@@ -315,13 +349,14 @@ static void upload() {
             if (!wasUploaded)
                 pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, finger.id);
 
-            // ── Position with micro-jitter for virtual fingers ──
+            // [FIX] 微抖动与速度反相关：静止时模拟手指自然微调，移动时保持稳定
             int posX = static_cast<int>(std::lround(finger.pos.x));
             int posY = static_cast<int>(std::lround(finger.pos.y));
             if (finger.isVirtual) {
-                // Sub-pixel jitter: ±1.5px random walk, slow enough to not look like noise
-                posX += static_cast<int>(std::lround(randFloatSym() * 1.5f));
-                posY += static_cast<int>(std::lround(randFloatSym() * 1.5f));
+                float jitterAmount = (fingerSpeed < 3.0f) ? 2.0f
+                                    : ((fingerSpeed < 25.0f) ? 1.2f : 0.4f);
+                posX += static_cast<int>(std::lround(randFloatSym() * jitterAmount));
+                posY += static_cast<int>(std::lround(randFloatSym() * jitterAmount));
             }
 
             pushEvent(count, EV_ABS, ABS_MT_POSITION_X, posX);
@@ -329,15 +364,19 @@ static void upload() {
             pushEvent(count, EV_ABS, ABS_X, posX);
             pushEvent(count, EV_ABS, ABS_Y, posY);
 
-            // ── Pressure: 120~180 with frame-level variation ──
-            int pressure = pressureBase + (static_cast<int>(fastRand()) % 11) - 5;  // ±5 from base
-            pressure = std::clamp(pressure, 110, 190);
+            // [FIX] 压力与速度相关：快速滑动时手指按压力度自然减小
+            int speedPressureDrop = static_cast<int>(fingerSpeed * 0.06f);
+            int pressure = pressureBase - speedPressureDrop + (static_cast<int>(fastRand()) % 11) - 5;
+            pressure = std::clamp(pressure, 95, 195);
 
-            // TouchMajor: 18~38, correlated with pressure
-            int touchMajor = 18 + (pressure - 110) * 20 / 80 + (static_cast<int>(fastRand()) % 5) - 2;
-            touchMajor = std::clamp(touchMajor, 16, 40);
-            int touchMinor = touchMajor - 5 + (static_cast<int>(fastRand()) % 7);  // 11~42
-            touchMinor = std::clamp(touchMinor, 12, 42);
+            // [FIX] touch_major 与速度相关：快速滑动时手指更扁平，接触面积增大
+            float speedMajorBonus = (fingerSpeed > 15.0f) ? (fingerSpeed * 0.12f) : 0.0f;
+            int touchMajor = 18 + (pressure - 110) * 20 / 80
+                           + static_cast<int>(speedMajorBonus)
+                           + (static_cast<int>(fastRand()) % 5) - 2;
+            touchMajor = std::clamp(touchMajor, 14, 52);
+            int touchMinor = touchMajor - 5 + (static_cast<int>(fastRand()) % 7);
+            touchMinor = std::clamp(touchMinor, 10, 48);
 
             pushEvent(count, EV_ABS, ABS_MT_PRESSURE, pressure);
             pushEvent(count, EV_ABS, ABS_PRESSURE, pressure);
@@ -355,9 +394,13 @@ static void upload() {
     }
 
     pushEvent(count, EV_KEY, BTN_TOUCH, hasActiveFinger ? 1 : 0);
-    // Dynamic: BTN_TOOL_FINGER only for single-touch, 0 for multi-touch
     pushEvent(count, EV_KEY, BTN_TOOL_FINGER, (activeFingerCount == 1) ? 1 : 0);
     pushEvent(count, EV_SYN, SYN_REPORT, 0);
+
+    // 填充所有事件的时间戳
+    for (int i = 0; i < count; ++i) {
+        g_inputBuffer.event[i].time = tv;
+    }
 
     ssize_t written = write(g_outputFd, g_inputBuffer.event, sizeof(input_event) * count);
     if (written != static_cast<ssize_t>(sizeof(input_event) * count)) {
@@ -762,6 +805,7 @@ void touch_down(int slot, int id, int screenX, int screenY) {
         finger.id = id;
     }
     finger.pos = Vec2(tx, ty);
+    finger.prevPos = finger.pos;  // [FIX] 初始化 prevPos，避免第一帧速度突变
     finger.targetPos = finger.pos;
     finger.isDown = true;
     finger.isVirtual = true;
