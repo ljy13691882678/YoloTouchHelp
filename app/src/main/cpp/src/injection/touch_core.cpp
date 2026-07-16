@@ -638,10 +638,10 @@ bool touch_init(int screenW, int screenH) {
 
     // Randomize virtual slot IDs on each init (avoid fixed 8, 9 pattern)
     g_virtual_slot = 5 + static_cast<int>(fastRand() % 4);    // 5~8
-    g_trigger_slot = g_virtual_slot + 1;
-    if (g_trigger_slot >= 9) g_trigger_slot = 5;
+    // [FIX] 单触点模式：trigger 复用 virtual slot，全程只维持一个虚拟手指
+    g_trigger_slot = g_virtual_slot;
     g_virtual_id = 800 + static_cast<int>(fastRand() % 400);   // 800~1199
-    g_trigger_id = g_virtual_id + 500 + static_cast<int>(fastRand() % 500);  // +500~999
+    g_trigger_id = g_virtual_id;  // [FIX] 单触点模式：统一 tracking ID
 
     // Randomize pressure base per session
     g_pressure_base = 130 + static_cast<int>(fastRand() % 40);  // 130~169
@@ -756,7 +756,11 @@ void touch_down(int slot, int id, int screenX, int screenY) {
     float tx, ty;
     screenToTouch(screenX, screenY, tx, ty);
     TouchObj& finger = g_devices[0].fingers[slot];
-    finger.id = id;
+    // [FIX] 单触点模式：如果该 slot 已经是按下状态，不要改变 tracking_id
+    // 避免系统识别为旧手指抬起、新手指按下，保证拉枪操控的连续性
+    if (!finger.isDown) {
+        finger.id = id;
+    }
     finger.pos = Vec2(tx, ty);
     finger.targetPos = finger.pos;
     finger.isDown = true;
