@@ -22,6 +22,13 @@ import kotlin.math.abs
  * 4. 移除阻塞式 while 循环等待 READY，改用 CompletableFuture+超时
  * 5. keepAlive 改为只在实际检测到连接异常时才发，减少无效 IPC
  * 6. queryDeviceAbs 不再返回硬编码值，改为请求 daemon 实时查询
+ *
+ * 触控方案:
+ * - 瞄准通道 (moveTo/swipe/lift) 走真实陀螺仪设备注入（OPEN_GYRO + GYRO_MOVE），
+ *   由 AimController 调用 moveTo 传入绝对屏幕坐标，本类内部计算像素增量并写入
+ *   /dev/input 中真实陀螺仪 event 设备的 ABS_RX/ABS_RY 轴。
+ * - 扳机/单点 tap/fire 等仍走 uinput 触摸通道（OPEN_UINPUT + DOWN/MOVE/UP）。
+ * - 陀螺仪不可用时（设备未找到）自动回退到触摸方案。
  */
 class RootInjectorClient(private val context: Context) : TouchInjectorInterface {
     companion object {
@@ -38,6 +45,13 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val cmdLock = Object()
     private val execThreadPool = java.util.concurrent.Executors.newCachedThreadPool()
+
+    // 陀螺仪瞄准通道状态
+    @Volatile
+    private var gyroAvailable = false
+    // 上次注入的屏幕坐标，用于计算增量；负值表示尚未初始化（等待 swipe 设定起点）
+    private var gyroLastX = Int.MIN_VALUE
+    private var gyroLastY = Int.MIN_VALUE
 
     override fun connect(callback: InjectorCallback) {
         Log.d(TAG, "Attempting root connection...")
@@ -150,7 +164,38 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
 
     // [SMOOTH] swipe 使用 cubic ease-in-out 模拟真人手指的加速度曲线
     // 真人手指滑动: 起手慢 → 中间快 → 收尾慢，而非机械式线性等距步进
+    //
+    // 陀螺仪模式下：
+    // - durationMs==0 且起止点相同（AimController 的 aim DOWN 调用）：
+    //   仅记录起点，不发送任何事件。
+    // - durationMs>0 或有位移：沿 cubic 曲线分步发送 GYRO_MOVE 增量。
     override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
+        if (gyroAvailable) {
+            // 起点：初始化增量跟踪
+            gyroLastX = x1
+            gyroLastY = y1
+            if (durationMs <= 0 && x1 == x2 && y1 == y2) {
+                // AimController 的"按下"语义：陀螺仪无需按下事件
+                return
+            }
+            val baseSteps = maxOf(4, durationMs / 8)
+            val steps = baseSteps + (Math.random() * 3).toInt()
+            for (i in 1..steps) {
+                val t = i.toFloat() / steps.toFloat()
+                val easedT = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f) * (-2f * t + 2f) * (-2f * t + 2f) / 2f
+                val cx = x1 + ((x2 - x1).toFloat() * easedT).toInt()
+                val cy = y1 + ((y2 - y1).toFloat() * easedT).toInt()
+                injectGyroMove(cx, cy)
+                val midBonus = (1f - abs(2f * t - 1f)) * 6f
+                val sleepMs = (5 + (Math.random() * 11).toInt() - midBonus.toInt()).coerceIn(4, 16)
+                Thread.sleep(sleepMs.toLong())
+            }
+            // 确保终点精确到达
+            injectGyroMove(x2, y2)
+            return
+        }
+
+        // 回退：原触摸 swipe
         execOk("DOWN $x1 $y1")
         if (durationMs > 0) {
             val baseSteps = maxOf(4, durationMs / 8)       // 至少4步保证平滑
@@ -181,11 +226,37 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     }
 
     override fun moveTo(x: Int, y: Int) {
+        if (gyroAvailable) {
+            injectGyroMove(x, y)
+            return
+        }
         execOk("MOVE $x $y")
     }
 
     override fun lift() {
+        if (gyroAvailable) {
+            // 陀螺仪无"抬起"语义，仅重置增量跟踪状态
+            gyroLastX = Int.MIN_VALUE
+            gyroLastY = Int.MIN_VALUE
+            return
+        }
         execOk("UP")
+    }
+
+    // 计算与上一次注入坐标的像素增量并写入陀螺仪设备
+    private fun injectGyroMove(x: Int, y: Int) {
+        if (gyroLastX == Int.MIN_VALUE || gyroLastY == Int.MIN_VALUE) {
+            gyroLastX = x
+            gyroLastY = y
+            return
+        }
+        val dx = x - gyroLastX
+        val dy = y - gyroLastY
+        if (dx != 0 || dy != 0) {
+            execOk("GYRO_MOVE $dx $dy")
+        }
+        gyroLastX = x
+        gyroLastY = y
     }
 
     // [FIX] keepAlive 直接发送，不等待回复（fire-and-forget）
@@ -262,7 +333,20 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     }
 
     override fun initRemote(): Boolean {
-        return execOk("OPEN_UINPUT")
+        val uinputOk = execOk("OPEN_UINPUT")
+        if (!uinputOk) return false
+        // 尝试打开真实陀螺仪设备用于瞄准通道
+        // 失败时陀螺仪不可用，瞄准会自动回退到触摸 MOVE/UP
+        gyroAvailable = execOk("OPEN_GYRO")
+        if (gyroAvailable) {
+            Log.d(TAG, "Gyro aim channel enabled")
+            // 重置增量跟踪
+            gyroLastX = Int.MIN_VALUE
+            gyroLastY = Int.MIN_VALUE
+        } else {
+            Log.w(TAG, "No gyro device found, aim channel falls back to uinput touch")
+        }
+        return true
     }
 
     override fun setResolution(screenW: Int, screenH: Int, devW: Int, devH: Int) {
@@ -291,6 +375,10 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     }
 
     override fun destroyRemote() {
+        if (gyroAvailable) {
+            execOk("CLOSE_GYRO")
+            gyroAvailable = false
+        }
         execOk("DESTROY")
         connected = false
     }
@@ -307,8 +395,10 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
 
     override fun disconnect() {
         try {
+            if (gyroAvailable) execOk("CLOSE_GYRO")
             execOk("DESTROY")
         } catch (_: Exception) {}
+        gyroAvailable = false
         connected = false
         destroyProcess()
     }

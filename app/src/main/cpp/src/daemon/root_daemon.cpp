@@ -1,7 +1,7 @@
 /*
  * root_daemon.cpp — Thin stdin/stdout command parser over touch_core (OPTIMIZED)
  * Runs under `su`, communicates via text protocol.
- * All uinput logic lives in touch_core.cpp.
+ * All uinput logic lives in touch_core.cpp; gyroscope injection lives in gyro_core.cpp.
  *
  * Protocol:
  *   Commands (stdin, one per line):
@@ -26,6 +26,10 @@
  *     SET_JOYSTICK_ZONE <l> <t> <r> <b>
  *     IS_FINGER_IN_JOYSTICK_ZONE
  *     LIFT_JOYSTICK_FINGER
+ *     OPEN_GYRO                       (打开真实陀螺仪设备，瞄准通道走陀螺仪)
+ *     CLOSE_GYRO
+ *     GYRO_MOVE <dx> <dy>             (像素增量 → 陀螺仪事件)
+ *     SET_GYRO_SENSITIVITY <float>    (像素到原始轴值倍率，默认 1.0)
  *     KEEP_ALIVE
  *     DESTROY
  *
@@ -46,6 +50,7 @@
 #include <sys/prctl.h>
 #include <unistd.h>
 #include "touch_core.h"
+#include "gyro_core.h"
 
 // Screen params (set via commands before OPEN_UINPUT)
 static int g_screen_w = 0;
@@ -232,10 +237,40 @@ static void handle_command(const char* cmd) {
     else if (strcmp(buf, "LIFT_JOYSTICK_FINGER") == 0) {
         printf("OK:%d\n", touch_lift_joystick_finger() ? 1 : 0);
     }
+    else if (strcmp(buf, "OPEN_GYRO") == 0) {
+        // 扫描 /dev/input 找到真实陀螺仪设备并打开
+        if (gyro_init()) {
+            puts("OK");
+        } else {
+            puts("ERR:no gyro device");
+        }
+    }
+    else if (strcmp(buf, "CLOSE_GYRO") == 0) {
+        gyro_close();
+        puts("OK");
+    }
+    else if (strncmp(buf, "GYRO_MOVE ", 10) == 0) {
+        float dx, dy;
+        if (sscanf(buf + 10, "%f %f", &dx, &dy) == 2) {
+            if (gyro_inject_move(dx, dy)) {
+                puts("OK");
+            } else {
+                puts("ERR:gyro not initialized");
+            }
+        } else {
+            puts("ERR:invalid args");
+        }
+    }
+    else if (strncmp(buf, "SET_GYRO_SENSITIVITY ", 21) == 0) {
+        float sens = strtof(buf + 21, nullptr);
+        gyro_set_sensitivity(sens);
+        printf("OK:%.3f\n", sens);
+    }
     else if (strcmp(buf, "KEEP_ALIVE") == 0) {
         puts("OK");
     }
     else if (strcmp(buf, "DESTROY") == 0) {
+        gyro_close();
         touch_close();
         puts("OK");
         g_running = 0;
@@ -286,6 +321,7 @@ int main() {
         handle_command(line);
     }
 
+    gyro_close();
     touch_close();
     return 0;
 }
