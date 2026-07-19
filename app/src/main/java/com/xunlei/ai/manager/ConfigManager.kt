@@ -68,6 +68,7 @@ data class AppConfig(
     var autoTriggerAdsEnabled: Boolean = false,
     var autoTriggerAdsRange: Float = 180f,
     var touchOrientationMode: Int = 0,
+    var touchScheme: Int = 0,  // 0=Root uinput 触摸, 1=直接写陀螺仪设备
     var useCpuInference: Boolean = false,
     var cpuThreadCount: Int = 4
 )
@@ -153,6 +154,7 @@ object ConfigManager {
                         autoTriggerAdsEnabled = obj.optBoolean("autoTriggerAdsEnabled", false),
                         autoTriggerAdsRange = obj.optDouble("autoTriggerAdsRange", 180.0).toFloat(),
                         touchOrientationMode = obj.optInt("touchOrientationMode", 0),
+                        touchScheme = obj.optInt("touchScheme", 0),
                         useCpuInference = obj.optBoolean("useCpuInference", false),
                         cpuThreadCount = obj.optInt("cpuThreadCount", 4)
                     )
@@ -228,6 +230,7 @@ object ConfigManager {
                     put("autoTriggerAdsEnabled", config.autoTriggerAdsEnabled)
                     put("autoTriggerAdsRange", config.autoTriggerAdsRange.toDouble())
                     put("touchOrientationMode", config.touchOrientationMode)
+                    put("touchScheme", config.touchScheme)
                     put("useCpuInference", config.useCpuInference)
                     put("cpuThreadCount", config.cpuThreadCount)
                 }

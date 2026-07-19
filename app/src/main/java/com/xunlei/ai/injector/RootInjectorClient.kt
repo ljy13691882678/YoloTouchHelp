@@ -334,19 +334,44 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     override fun initRemote(): Boolean {
         val uinputOk = execOk("OPEN_UINPUT")
         if (!uinputOk) return false
-        // 尝试打开真实陀螺仪设备用于瞄准通道
-        // 失败时陀螺仪不可用，瞄准会自动回退到触摸 MOVE/UP
-        gyroAvailable = execOk("OPEN_GYRO")
-        if (gyroAvailable) {
-            Log.d(TAG, "Gyro aim channel enabled")
-            // 重置增量跟踪
-            gyroLastX = Int.MIN_VALUE
-            gyroLastY = Int.MIN_VALUE
-        } else {
-            Log.w(TAG, "No gyro device found, aim channel falls back to uinput touch")
-        }
+        // 默认禁用陀螺仪，由配置决定是否启用（setGyroEnabled）
+        // 调用方应在 initRemote 后调用 setGyroEnabled 触发实际启用
         return true
     }
+
+    /**
+     * 运行时切换瞄准通道：true=陀螺仪（直接写真机陀螺仪设备），
+     * false=原 uinput 触摸（DOWN/MOVE/UP）。
+     * 不需要重启 daemon，立即生效。
+     * 返回最终状态：true 表示陀螺仪已启用，false 表示仍走触摸（含启用失败回退）。
+     */
+    fun setGyroEnabled(enabled: Boolean): Boolean {
+        if (enabled) {
+            if (gyroAvailable) return true
+            if (!connected) return false
+            val ok = execOk("OPEN_GYRO")
+            if (ok) {
+                gyroAvailable = true
+                gyroLastX = Int.MIN_VALUE
+                gyroLastY = Int.MIN_VALUE
+                Log.d(TAG, "Gyro aim channel enabled")
+            } else {
+                gyroAvailable = false
+                Log.w(TAG, "No gyro device found, aim channel falls back to uinput touch")
+            }
+            return gyroAvailable
+        } else {
+            if (!gyroAvailable) return false
+            if (connected) execOk("CLOSE_GYRO")
+            gyroAvailable = false
+            gyroLastX = Int.MIN_VALUE
+            gyroLastY = Int.MIN_VALUE
+            Log.d(TAG, "Gyro aim channel disabled, falling back to uinput touch")
+            return false
+        }
+    }
+
+    fun isGyroEnabled(): Boolean = gyroAvailable
 
     override fun setResolution(screenW: Int, screenH: Int, devW: Int, devH: Int) {
         execOk("SET_RESOLUTION $screenW $screenH")

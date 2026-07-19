@@ -187,6 +187,7 @@ class FloatService : Service() {
     private var autoTriggerAdsEnabled = false
     private var autoTriggerAdsRange = 180f
     private var touchOrientationMode = TOUCH_ORIENTATION_AUTO
+    private var touchScheme = 0  // 0=Root uinput 触摸, 1=直接写陀螺仪设备
 
 private var triggerOverlay: TriggerOverlayView? = null
     private var triggerOverlayAdded = false
@@ -316,6 +317,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         triggerShowArea = cfg.triggerShowArea
         autoStopEnabled = cfg.autoStopEnabled
         touchOrientationMode = cfg.touchOrientationMode
+        touchScheme = cfg.touchScheme
         aimHoldEnabled = cfg.aimHoldEnabled
         recoilEnabled = cfg.recoilEnabled
         recoilStrength = cfg.recoilStrength
@@ -495,6 +497,8 @@ private var triggerOverlay: TriggerOverlayView? = null
                         val initOk = touchClient?.initRemote() ?: false
                         Log.d(TAG, "RemoteInjector init: $initOk")
                         touchClient?.startGeteventListener()
+                        // 连接成功后按当前配置应用触控方案
+                        applyTouchScheme()
                     } catch (e: Exception) { Log.e(TAG, "initRemote error: ${e.message}") }
                 }
                 override fun onDisconnected() { touchClient = null; Log.w(TAG, "TouchInjector disconnected") }
@@ -716,7 +720,7 @@ private var triggerOverlay: TriggerOverlayView? = null
             guiPanel.targetLostTolerance = targetLostTolerance; guiPanel.showLockRay = showLockRay
             guiPanel.lockBoxThreshold = lockBoxThreshold; guiPanel.lockCenterWeight = lockCenterWeight
             guiPanel.moveSmooth = moveSmooth; guiPanel.deadzoneHoldFrames = deadzoneHoldFrames
-            guiPanel.edgeReturnStrength = edgeReturnStrength; guiPanel.touchOrientationMode = touchOrientationMode
+            guiPanel.edgeReturnStrength = edgeReturnStrength; guiPanel.touchOrientationMode = touchOrientationMode; guiPanel.touchScheme = touchScheme
             guiPanel.showDetectionClassIds = showDetectionClassIds.toSet()
             // 补充路径A遗漏的属性
             guiPanel.range = cachedRangePx; guiPanel.confidence = currentConfidence
@@ -794,7 +798,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.bezierControlOffset = bezierControlOffset; guiPanel.bezierRandomSpread = bezierRandomSpread
         guiPanel.convergeThresh = convergeThresh.toInt()
         guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
-        guiPanel.touchOrientationMode = touchOrientationMode
+        guiPanel.touchOrientationMode = touchOrientationMode; guiPanel.touchScheme = touchScheme
 
         guiPanel.buildUI()
         val initialWidth = ((280 * resources.displayMetrics.density).toInt()).coerceAtMost((screenWidth * 0.92f).toInt().coerceAtLeast(dp(240)))
@@ -879,6 +883,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.onRecordEnabledChanged = { on -> toggleRecording(on) }
         guiPanel.onAutoSaveDatasetChanged = { on -> autoSaveDataset = on }
         guiPanel.onTouchOrientationModeChanged = { mode -> touchOrientationMode = mode; guiPanel.touchOrientationMode = mode; applyTouchOrientationConfig(); ConfigManager.updateConfig { touchOrientationMode = mode } }
+        guiPanel.onTouchSchemeChanged = { scheme -> touchScheme = scheme; guiPanel.touchScheme = scheme; applyTouchScheme(); ConfigManager.updateConfig { touchScheme = scheme } }
         guiPanel.onAimClassesChanged = { classes -> aimClasses = classes.toMutableSet(); aimController.aimClasses = classes.toMutableSet(); ConfigManager.updateConfig { aimClasses = classes } }
         guiPanel.onPriorityClassChanged = { cls -> priorityClass = cls; aimController.priorityClass = cls; ConfigManager.updateConfig { priorityClass = cls } }
         guiPanel.onClassAimOffsetChanged = { id, value -> classAimOffsets = classAimOffsets.toMutableMap().apply { put(id, value) }; aimController.classAimOffsets = classAimOffsets; ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets } }
@@ -1182,6 +1187,25 @@ private var triggerOverlay: TriggerOverlayView? = null
         val effectiveRotation = currentDisplayRotation()
         Log.d(TAG, "applyTouchOrientationConfig: mode=$touchOrientationMode raw=$rawRotation effective=$effectiveRotation")
         touchClient?.setOrientationConfig(effectiveRotation)
+    }
+
+    // 切换瞄准触控方案：0=Root uinput 触摸, 1=直接写陀螺仪设备
+    // 仅对 RootInjectorClient 生效；Shizuku 路径无陀螺仪支持，请求会被忽略
+    private fun applyTouchScheme() {
+        val client = touchClient
+        if (client is RootInjectorClient) {
+            val enabled = touchScheme == 1
+            val actual = client.setGyroEnabled(enabled)
+            Log.d(TAG, "applyTouchScheme: requested=$enabled actual=$actual scheme=$touchScheme")
+            // 若请求启用陀螺仪但失败（设备未找到），回退显示为 Root 触摸
+            if (enabled && !actual) {
+                touchScheme = 0
+                guiPanel.touchScheme = 0
+                guiPanel.buildUI()
+            }
+        } else {
+            Log.w(TAG, "applyTouchScheme: current injector (${client?.javaClass?.simpleName}) does not support gyro")
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

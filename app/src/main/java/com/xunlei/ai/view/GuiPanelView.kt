@@ -80,6 +80,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onAutoTriggerAdsEnabledChanged: ((Boolean) -> Unit)? = null
     var onAutoTriggerAdsRangeChanged: ((Float) -> Unit)? = null
     var onTouchOrientationModeChanged: ((Int) -> Unit)? = null
+    var onTouchSchemeChanged: ((Int) -> Unit)? = null
     var onKalmanPredictEnabledChanged: ((Boolean) -> Unit)? = null
     var onKalmanMaxMissedChanged: ((Int) -> Unit)? = null
     var onKalmanProcessNoiseChanged: ((Float) -> Unit)? = null
@@ -152,6 +153,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var autoTriggerAdsEnabled = false
     var autoTriggerAdsRange = 180f
     var touchOrientationMode = 0
+    var touchScheme = 0  // 0=Root 触摸, 1=陀螺仪
     var activeTab = 0
 
     private val webView: WebView
@@ -335,6 +337,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("autoTriggerAdsEnabled", autoTriggerAdsEnabled)
             put("autoTriggerAdsRange", autoTriggerAdsRange.toDouble())
             put("touchOrientationMode", touchOrientationMode)
+            put("touchScheme", touchScheme)
             put("boxAimRatio", boxAimRatio.toDouble())
             put("priorityClass", priorityClass)
             put("hasMultipleClasses", classMap.size > 1)
@@ -621,6 +624,11 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                     "touchOrientationMode" -> {
                         touchOrientationMode = value
                         onTouchOrientationModeChanged?.invoke(value)
+                        pushState()
+                    }
+                    "touchScheme" -> {
+                        touchScheme = value
+                        onTouchSchemeChanged?.invoke(value)
                         pushState()
                     }
                     "aimTouchSize" -> {
