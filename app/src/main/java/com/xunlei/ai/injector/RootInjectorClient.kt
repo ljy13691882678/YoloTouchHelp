@@ -165,33 +165,28 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
     // [SMOOTH] swipe 使用 cubic ease-in-out 模拟真人手指的加速度曲线
     // 真人手指滑动: 起手慢 → 中间快 → 收尾慢，而非机械式线性等距步进
     //
-    // 陀螺仪模式下：
-    // - durationMs==0 且起止点相同（AimController 的 aim DOWN 调用）：
-    //   仅记录起点，不发送任何事件。
-    // - durationMs>0 或有位移：沿 cubic 曲线分步发送 GYRO_MOVE 增量。
+    // 陀螺仪模式下：陀螺仪是速率型传感器，没有"按下/抬起"语义。
+    // AimController 调用 swipe(x, y, x, y, 0) 表示开始追踪目标，之后会连续
+    // 调用 moveTo 更新期望位置。这里只记录起点；速率更新由 moveTo 计算。
     override fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, durationMs: Int) {
         if (gyroAvailable) {
-            // 起点：初始化增量跟踪
+            // 陀螺仪模式：记录起点，等待后续 moveTo 推送速率
             gyroLastX = x1
             gyroLastY = y1
-            if (durationMs <= 0 && x1 == x2 && y1 == y2) {
-                // AimController 的"按下"语义：陀螺仪无需按下事件
-                return
+            // 若调用方直接给出位移（非 aim DOWN 语义），按 cubic 曲线分步推送
+            if (durationMs > 0 && (x1 != x2 || y1 != y2)) {
+                val steps = maxOf(4, durationMs / 8)
+                for (i in 1..steps) {
+                    val t = i.toFloat() / steps.toFloat()
+                    val easedT = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f) * (-2f * t + 2f) * (-2f * t + 2f) / 2f
+                    val cx = x1 + ((x2 - x1).toFloat() * easedT).toInt()
+                    val cy = y1 + ((y2 - y1).toFloat() * easedT).toInt()
+                    injectGyroRate(cx, cy)
+                    val midBonus = (1f - abs(2f * t - 1f)) * 6f
+                    val sleepMs = (5 + (Math.random() * 11).toInt() - midBonus.toInt()).coerceIn(4, 16)
+                    Thread.sleep(sleepMs.toLong())
+                }
             }
-            val baseSteps = maxOf(4, durationMs / 8)
-            val steps = baseSteps + (Math.random() * 3).toInt()
-            for (i in 1..steps) {
-                val t = i.toFloat() / steps.toFloat()
-                val easedT = if (t < 0.5f) 4f * t * t * t else 1f - (-2f * t + 2f) * (-2f * t + 2f) * (-2f * t + 2f) / 2f
-                val cx = x1 + ((x2 - x1).toFloat() * easedT).toInt()
-                val cy = y1 + ((y2 - y1).toFloat() * easedT).toInt()
-                injectGyroMove(cx, cy)
-                val midBonus = (1f - abs(2f * t - 1f)) * 6f
-                val sleepMs = (5 + (Math.random() * 11).toInt() - midBonus.toInt()).coerceIn(4, 16)
-                Thread.sleep(sleepMs.toLong())
-            }
-            // 确保终点精确到达
-            injectGyroMove(x2, y2)
             return
         }
 
@@ -227,7 +222,7 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
 
     override fun moveTo(x: Int, y: Int) {
         if (gyroAvailable) {
-            injectGyroMove(x, y)
+            injectGyroRate(x, y)
             return
         }
         execOk("MOVE $x $y")
@@ -235,7 +230,8 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
 
     override fun lift() {
         if (gyroAvailable) {
-            // 陀螺仪无"抬起"语义，仅重置增量跟踪状态
+            // 抬起：停止旋转，陀螺仪归零
+            execOk("GYRO_MOVE 0 0")
             gyroLastX = Int.MIN_VALUE
             gyroLastY = Int.MIN_VALUE
             return
@@ -243,8 +239,10 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
         execOk("UP")
     }
 
-    // 计算与上一次注入坐标的像素增量并写入陀螺仪设备
-    private fun injectGyroMove(x: Int, y: Int) {
+    // 把当前期望屏幕坐标转换为速率并推送给 daemon
+    // daemon 端 gyro_inject_move 是异步的：只更新原子变量，
+    // 由后台 writer 线程以 500Hz 持续写入真机陀螺仪设备
+    private fun injectGyroRate(x: Int, y: Int) {
         if (gyroLastX == Int.MIN_VALUE || gyroLastY == Int.MIN_VALUE) {
             gyroLastX = x
             gyroLastY = y
@@ -252,6 +250,7 @@ class RootInjectorClient(private val context: Context) : TouchInjectorInterface 
         }
         val dx = x - gyroLastX
         val dy = y - gyroLastY
+        // 直接发送当前帧的位移作为速率值；daemon 后台线程会持续以该速率注入
         if (dx != 0 || dy != 0) {
             execOk("GYRO_MOVE $dx $dy")
         }
