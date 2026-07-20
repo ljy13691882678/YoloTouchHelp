@@ -44,10 +44,8 @@ add_library(aimbot SHARED
     src/inference/onnx_engine.cpp
 )
 
-# Shared touch core library (touch + gyro injection)
-add_library(touch_core STATIC
-    src/injection/touch_core.cpp
-    src/injection/gyro_core.cpp)
+# Shared touch core library
+add_library(touch_core STATIC src/injection/touch_core.cpp)
 target_link_libraries(touch_core android log)
 
 # Compile uinput injector (JNI wrapper over touch_core)

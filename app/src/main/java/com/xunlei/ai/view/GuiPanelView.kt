@@ -51,12 +51,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onBezierDurationChanged: ((Int) -> Unit)? = null
     var onBezierControlOffsetChanged: ((Float) -> Unit)? = null
     var onBezierRandomSpreadChanged: ((Float) -> Unit)? = null
-    var onBionicReactionMinChanged: ((Int) -> Unit)? = null
-    var onBionicReactionMaxChanged: ((Int) -> Unit)? = null
-    var onBionicJitterChanged: ((Float) -> Unit)? = null
-    var onBionicOvershootChanged: ((Float) -> Unit)? = null
-    var onBionicImperfectChanged: ((Float) -> Unit)? = null
-    var onBionicSpeedVarChanged: ((Float) -> Unit)? = null
     var onCaptureRangeEnabled: ((Boolean) -> Unit)? = null
     var onShowCaptureRangeChanged: ((Boolean) -> Unit)? = null
     var onShowDetectionBoxChanged: ((Boolean) -> Unit)? = null
@@ -86,7 +80,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onAutoTriggerAdsEnabledChanged: ((Boolean) -> Unit)? = null
     var onAutoTriggerAdsRangeChanged: ((Float) -> Unit)? = null
     var onTouchOrientationModeChanged: ((Int) -> Unit)? = null
-    var onTouchSchemeChanged: ((Int) -> Unit)? = null
     var onKalmanPredictEnabledChanged: ((Boolean) -> Unit)? = null
     var onKalmanMaxMissedChanged: ((Int) -> Unit)? = null
     var onKalmanProcessNoiseChanged: ((Float) -> Unit)? = null
@@ -115,12 +108,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var bezierDuration = 30
     var bezierControlOffset = 0.3f
     var bezierRandomSpread = 0.1f
-    var bionicReactionMin = 80
-    var bionicReactionMax = 250
-    var bionicJitter = 1.5f
-    var bionicOvershoot = 0.08f
-    var bionicImperfect = 2.5f
-    var bionicSpeedVar = 0.15f
     var showCaptureRange = false
     var showDetectionBox = false
     var showCenterDot = false
@@ -165,7 +152,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var autoTriggerAdsEnabled = false
     var autoTriggerAdsRange = 180f
     var touchOrientationMode = 0
-    var touchScheme = 0  // 0=Root 触摸, 1=陀螺仪
     var activeTab = 0
 
     private val webView: WebView
@@ -314,12 +300,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("bezierDuration", bezierDuration)
             put("bezierControlOffset", bezierControlOffset.toDouble())
             put("bezierRandomSpread", bezierRandomSpread.toDouble())
-            put("bionicReactionMin", bionicReactionMin)
-            put("bionicReactionMax", bionicReactionMax)
-            put("bionicJitter", bionicJitter.toDouble())
-            put("bionicOvershoot", bionicOvershoot.toDouble())
-            put("bionicImperfect", bionicImperfect.toDouble())
-            put("bionicSpeedVar", bionicSpeedVar.toDouble())
             put("aimHoldEnabled", aimHoldEnabled)
             put("convergeThresh", convergeThresh)
             put("showCaptureRange", showCaptureRange)
@@ -355,7 +335,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("autoTriggerAdsEnabled", autoTriggerAdsEnabled)
             put("autoTriggerAdsRange", autoTriggerAdsRange.toDouble())
             put("touchOrientationMode", touchOrientationMode)
-            put("touchScheme", touchScheme)
             put("boxAimRatio", boxAimRatio.toDouble())
             put("priorityClass", priorityClass)
             put("hasMultipleClasses", classMap.size > 1)
@@ -619,14 +598,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                         bezierDuration = value
                         onBezierDurationChanged?.invoke(value)
                     }
-                    "bionicReactionMin" -> {
-                        bionicReactionMin = value
-                        onBionicReactionMinChanged?.invoke(value)
-                    }
-                    "bionicReactionMax" -> {
-                        bionicReactionMax = value
-                        onBionicReactionMaxChanged?.invoke(value)
-                    }
                     "kalmanMaxMissed" -> {
                         kalmanMaxMissed = value
                         onKalmanMaxMissedChanged?.invoke(value)
@@ -650,11 +621,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                     "touchOrientationMode" -> {
                         touchOrientationMode = value
                         onTouchOrientationModeChanged?.invoke(value)
-                        pushState()
-                    }
-                    "touchScheme" -> {
-                        touchScheme = value
-                        onTouchSchemeChanged?.invoke(value)
                         pushState()
                     }
                     "aimTouchSize" -> {
@@ -696,22 +662,6 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                     "bezierRandomSpread" -> {
                         bezierRandomSpread = value
                         onBezierRandomSpreadChanged?.invoke(value)
-                    }
-                    "bionicJitter" -> {
-                        bionicJitter = value
-                        onBionicJitterChanged?.invoke(value)
-                    }
-                    "bionicOvershoot" -> {
-                        bionicOvershoot = value
-                        onBionicOvershootChanged?.invoke(value)
-                    }
-                    "bionicImperfect" -> {
-                        bionicImperfect = value
-                        onBionicImperfectChanged?.invoke(value)
-                    }
-                    "bionicSpeedVar" -> {
-                        bionicSpeedVar = value
-                        onBionicSpeedVarChanged?.invoke(value)
                     }
                     "aimOffsetYRatio" -> {
                         aimOffsetYRatio = value

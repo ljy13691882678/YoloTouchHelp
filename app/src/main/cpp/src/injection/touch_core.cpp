@@ -92,11 +92,6 @@ static std::mutex g_mutex;
 static int g_outputFd = 0;
 static bool g_initialized = false;
 
-// When true (Shizuku path): don't grab physical device, only upload
-// virtual fingers. Physical touches go through the real device directly.
-// When false (root path, default): grab physical device, upload all fingers.
-static bool g_no_grab = false;
-
 // Screen params
 static int g_screen_w = 0, g_screen_h = 0;
 static int g_rotation = 0;
@@ -280,20 +275,6 @@ static void upload() {
         bool wasUploaded = g_uploadedFingerDown[0][fi];
         const int slot = fi;
 
-        // ── Shizuku (no_grab) path: skip physical fingers ──
-        // Physical touches are already reported by the real device.
-        // Only upload virtual fingers so they coexist with physical.
-        if (g_no_grab) {
-            if (!finger.isVirtual) {
-                if (wasUploaded) {
-                    pushEvent(count, EV_ABS, ABS_MT_SLOT, slot);
-                    pushEvent(count, EV_ABS, ABS_MT_TRACKING_ID, -1);
-                    g_uploadedFingerDown[0][fi] = false;
-                }
-                continue;
-            }
-        }
-
         if (finger.isDown) {
             // ── Apply exponential smoothing for virtual fingers ──
             if (finger.isVirtual) {
@@ -403,58 +384,38 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
         return false;
     }
 
-    // ── Copy source device identity for anti-detection ──
-    // Using the real device's name, vendor, product, and phys path
-    // makes the uinput device look like a legitimate secondary
-    // touch controller from the same hardware vendor.
-
-    // Copy source device name (EVIOCGNAME)
-    char srcName[256] = {};
-    if (ioctl(sourceFd, EVIOCGNAME(sizeof(srcName) - 1), srcName) < 0) {
-        srcName[0] = '\0';
-    }
-    if (srcName[0] != '\0') {
-        strncpy(uiDev.name, srcName, UINPUT_MAX_NAME_SIZE - 1);
-    } else {
-        // Fallback: randomized chip name
-        static const char* touch_chip_names[] = {
-            "goodix_ts", "ft5x06_ts", "atmel_mxt_ts", "synaptics_dsx",
-            "focaltech_ts", "ilitek_ts", "novatek_ts", "himax_ts",
-            "sitronix_ts", "elan_ts", "ektf3xxx", "zinitix_ts",
-            "melfas_mcs", "st_fts", "chipone_ts", "solomon_ts",
-            "silead_ts", "samsung_ts", "synaptics_tcm", "parade_ts",
-            "pixcir_tangoc", "wx_ts", "gt9xx", "ft6236",
-            "tsc2007", "edt_ft5x06", "ads7846", "egalax_ts",
-            "usbtouchscreen", "wm97xx", "cy8ctmg110", "rohm_bu21023"
-        };
-        int idx = fastRand() % (sizeof(touch_chip_names) / sizeof(touch_chip_names[0]));
-        strncpy(uiDev.name, touch_chip_names[idx], UINPUT_MAX_NAME_SIZE - 1);
-    }
+    // Expanded device name pool: 30+ real touch chip names
+    static const char* touch_chip_names[] = {
+        "goodix_ts", "ft5x06_ts", "atmel_mxt_ts", "synaptics_dsx",
+        "cyttsp5_i2c", "ilitek_ts", "novatek_ts", "focaltech_ts",
+        "himax_ts", "sitronix_ts",
+        "elan_ts", "ektf3xxx", "zinitix_ts", "melfas_mcs",
+        "st_fts", "chipone_ts", "solomon_ts", "rohm_bu21023",
+        "silead_ts", "samsung_ts", "synaptics_tcm", "parade_ts",
+        "pixcir_tangoc", "wx_ts", "gt9xx", "ft6236",
+        "tsc2007", "edt_ft5x06", "ads7846", "egalax_ts",
+        "usbtouchscreen", "wm97xx", "cy8ctmg110"
+    };
+    static const unsigned short touch_vendor_ids[] = {
+        0x27C6, 0x38F7, 0x03EB, 0x06CB,
+        0x04B4, 0x222A, 0x0603, 0x38F7,
+        0x1241, 0x1016,
+        0x04F3, 0x22B9, 0x2A94, 0x1FD2,
+        0x0483, 0x2BE4, 0x0EEF, 0x04B4,
+        0x266E, 0x04E8, 0x06CB, 0x32AC,
+        0x1CBE, 0x2575, 0x27C6, 0x38F7,
+        0x0641, 0x0EEF, 0x0457, 0x0EEF,
+        0x0EEF, 0x22B9, 0x04B4
+    };
+    static const int chip_count = sizeof(touch_chip_names) / sizeof(touch_chip_names[0]);
+    int chip_idx = fastRand() % chip_count;
+    strncpy(uiDev.name, touch_chip_names[chip_idx], UINPUT_MAX_NAME_SIZE - 1);
     uiDev.name[UINPUT_MAX_NAME_SIZE - 1] = '\0';
 
-    // Copy source device vendor/product/version (EVIOCGID)
-    input_id srcId{};
-    if (ioctl(sourceFd, EVIOCGID, &srcId) == 0) {
-        uiDev.id = srcId;
-    } else {
-        // Fallback: random I2C touch vendor
-        uiDev.id.bustype = BUS_I2C;
-        uiDev.id.vendor = 0x27C6;
-        uiDev.id.product = 0x0001;
-        uiDev.id.version = 0x0100;
-    }
-
-    // Copy source device phys path (EVIOCGPHYS)
-    char srcPhys[256] = {};
-    if (ioctl(sourceFd, EVIOCGPHYS(sizeof(srcPhys) - 1), srcPhys) < 0) {
-        srcPhys[0] = '\0';
-    }
-    if (srcPhys[0] != '\0') {
-        ioctl(g_outputFd, UI_SET_PHYS, srcPhys);
-    } else {
-        // Fallback: fake phys path
-        ioctl(g_outputFd, UI_SET_PHYS, "i2c/0-0038/input/input0");
-    }
+    uiDev.id.bustype = BUS_I2C;
+    uiDev.id.vendor = touch_vendor_ids[chip_idx];
+    uiDev.id.product = 0x0001 + (fastRand() & 0x7F);
+    uiDev.id.version = 0x0100 + (fastRand() & 0x1FF);
 
     ioctl(g_outputFd, UI_SET_PROPBIT, INPUT_PROP_DIRECT);
     ioctl(g_outputFd, UI_SET_EVBIT, EV_ABS);
@@ -477,6 +438,27 @@ static bool createUinputDevice(int screenX, int screenY, int sourceFd) {
     ioctl(g_outputFd, UI_SET_KEYBIT, KEY_SLEEP);
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOOL_FINGER);
     ioctl(g_outputFd, UI_SET_KEYBIT, BTN_TOUCH);
+
+    // Expanded phys path templates
+    static const char* fake_phys_paths[] = {
+        "i2c/0-0038", "i2c/1-005d", "i2c/2-0020",
+        "platform/soc/78b9000.i2c/i2c-3/3-0040",
+        "platform/goodix_ts.0",
+        "i2c/4-0049", "i2c/5-0014",
+        "platform/soc/990000.i2c/i2c-6/6-0038",
+        "platform/soc/c1b0000.i2c/i2c-7/7-005d",
+        "platform/msm_ssbi.0/pm8038-core",
+        "spi/spi0.0", "i2c/8-002a",
+        "platform/soc/ahb/ahb:apb/apb:i2c@1c28000/i2c-bus/input"
+    };
+    int phys_count = sizeof(fake_phys_paths) / sizeof(fake_phys_paths[0]);
+    int phys_idx = fastRand() % phys_count;
+    char physPath[80];
+    snprintf(physPath, sizeof(physPath), "%s/input/input%d", fake_phys_paths[phys_idx], fastRand() % 10);
+    ioctl(g_outputFd, UI_SET_PHYS, physPath);
+
+    input_id id{};
+    if (ioctl(sourceFd, EVIOCGID, &id) == 0) uiDev.id = id;
 
     uint8_t* bits = nullptr;
     ssize_t bitsSize = 0;
@@ -606,12 +588,7 @@ static void* deviceReader(void* arg) {
             }
 
             if (ie.type == EV_SYN && ie.code == SYN_REPORT) {
-                // Root path: forward physical touches to uinput
-                // Shizuku (no_grab) path: physical touches go through
-                // the real device, uinput only gets virtual fingers
-                if (!g_no_grab) {
-                    upload();
-                }
+                upload();
             }
         }
     }
@@ -668,9 +645,7 @@ bool touch_init(int screenW, int screenH) {
         if (ioctl(fd, EVIOCGABS(ABS_MT_POSITION_X), &device.absX) == 0 &&
             ioctl(fd, EVIOCGABS(ABS_MT_POSITION_Y), &device.absY) == 0) {
             device.fd = fd;
-            if (!g_no_grab) {
-                ioctl(fd, EVIOCGRAB, GRAB);
-            }
+            ioctl(fd, EVIOCGRAB, GRAB);
             g_devices.push_back(device);
             LOGD("touch device %s max=%d,%d", path, device.absX.maximum, device.absY.maximum);
         } else {
@@ -737,11 +712,6 @@ void touch_stop_readers(void) {
         pthread_join(t, nullptr);
     g_reader_threads.clear();
     LOGD("Stopped all readers");
-}
-
-void touch_set_no_grab(bool enable) {
-    g_no_grab = enable;
-    LOGD("touch_set_no_grab: %d", enable);
 }
 
 void touch_set_screen_params(int w, int h, int rotation) {

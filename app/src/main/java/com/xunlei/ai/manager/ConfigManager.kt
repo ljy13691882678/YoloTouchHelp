@@ -41,12 +41,6 @@ data class AppConfig(
     var bezierDuration: Int = 30,
     var bezierControlOffset: Float = 0.3f,
     var bezierRandomSpread: Float = 0.1f,
-    var bionicReactionMin: Int = 80,
-    var bionicReactionMax: Int = 250,
-    var bionicJitter: Float = 1.5f,
-    var bionicOvershoot: Float = 0.08f,
-    var bionicImperfect: Float = 2.5f,
-    var bionicSpeedVar: Float = 0.15f,
     var aimClasses: Set<Int> = emptySet(),  // empty = all classes
     var priorityClass: Int = -1,            // -1 = no priority
     var classAimOffsets: Map<Int, Float> = emptyMap(),  // per-class Y offset overrides
@@ -74,7 +68,6 @@ data class AppConfig(
     var autoTriggerAdsEnabled: Boolean = false,
     var autoTriggerAdsRange: Float = 180f,
     var touchOrientationMode: Int = 0,
-    var touchScheme: Int = 0,  // 0=Root uinput 触摸, 1=直接写陀螺仪设备
     var useCpuInference: Boolean = false,
     var cpuThreadCount: Int = 4
 )
@@ -133,12 +126,6 @@ object ConfigManager {
                         bezierDuration = obj.optInt("bezierDuration", 30),
                         bezierControlOffset = obj.optDouble("bezierControlOffset", 0.3).toFloat(),
                         bezierRandomSpread = obj.optDouble("bezierRandomSpread", 0.1).toFloat(),
-                        bionicReactionMin = obj.optInt("bionicReactionMin", 80),
-                        bionicReactionMax = obj.optInt("bionicReactionMax", 250),
-                        bionicJitter = obj.optDouble("bionicJitter", 1.5).toFloat(),
-                        bionicOvershoot = obj.optDouble("bionicOvershoot", 0.08).toFloat(),
-                        bionicImperfect = obj.optDouble("bionicImperfect", 2.5).toFloat(),
-                        bionicSpeedVar = obj.optDouble("bionicSpeedVar", 0.15).toFloat(),
                         aimClasses = parseIntSet(obj.optJSONArray("aimClasses")),
                         priorityClass = obj.optInt("priorityClass", -1),
                         classAimOffsets = parseFloatMap(obj.optJSONObject("classAimOffsets")),
@@ -166,7 +153,6 @@ object ConfigManager {
                         autoTriggerAdsEnabled = obj.optBoolean("autoTriggerAdsEnabled", false),
                         autoTriggerAdsRange = obj.optDouble("autoTriggerAdsRange", 180.0).toFloat(),
                         touchOrientationMode = obj.optInt("touchOrientationMode", 0),
-                        touchScheme = obj.optInt("touchScheme", 0),
                         useCpuInference = obj.optBoolean("useCpuInference", false),
                         cpuThreadCount = obj.optInt("cpuThreadCount", 4)
                     )
@@ -215,12 +201,6 @@ object ConfigManager {
                     put("bezierDuration", config.bezierDuration)
                     put("bezierControlOffset", config.bezierControlOffset.toDouble())
                     put("bezierRandomSpread", config.bezierRandomSpread.toDouble())
-                    put("bionicReactionMin", config.bionicReactionMin)
-                    put("bionicReactionMax", config.bionicReactionMax)
-                    put("bionicJitter", config.bionicJitter.toDouble())
-                    put("bionicOvershoot", config.bionicOvershoot.toDouble())
-                    put("bionicImperfect", config.bionicImperfect.toDouble())
-                    put("bionicSpeedVar", config.bionicSpeedVar.toDouble())
                     put("aimClasses", serializeIntSet(config.aimClasses))
                     put("priorityClass", config.priorityClass)
                     put("classAimOffsets", serializeFloatMap(config.classAimOffsets))
@@ -248,7 +228,6 @@ object ConfigManager {
                     put("autoTriggerAdsEnabled", config.autoTriggerAdsEnabled)
                     put("autoTriggerAdsRange", config.autoTriggerAdsRange.toDouble())
                     put("touchOrientationMode", config.touchOrientationMode)
-                    put("touchScheme", config.touchScheme)
                     put("useCpuInference", config.useCpuInference)
                     put("cpuThreadCount", config.cpuThreadCount)
                 }

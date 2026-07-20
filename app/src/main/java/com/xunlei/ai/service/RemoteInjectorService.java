@@ -35,16 +35,12 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
     private int inputMethod = INPUT_METHOD_UINPUT;
     long bgDownTime;
 
-    // ── uinput path: background finger (kept as-is for root touch) ──
+    // ── Anti-detection: randomized per-session parameters ──
     private final Random rng = new Random();
     private final int bgId;           // randomized background finger ID (3-8)
     private float bgX, bgY;           // jittered background position
     private int lastTapId = -1;
-
-    // ── InputManager path: pure single-touch (no background finger) ──
-    private final int touchId;        // pointer ID 5~12, avoids physical touch IDs 0~4
     private int drawingPointerId = -1;
-    private long downTime = 0;
     private boolean pointerDown = false;
     private static final int TRIGGER_PTR_ID = 20;
     private boolean triggerPointerDown = false;
@@ -59,8 +55,6 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
         // Randomize initial background position: 3-9 pixel range
         bgX = 3f + rng.nextFloat() * 6f;
         bgY = 3f + rng.nextFloat() * 6f;
-        // InputManager path pointer ID: 5~12 (avoids physical touch IDs 0~4)
-        touchId = 5 + rng.nextInt(8);
     }
 
     public void setResolution(int sw, int sh, int dw, int dh) {
@@ -163,14 +157,18 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
             Method injectInputEvent = android.hardware.input.InputManager.class.getMethod(
                 "injectInputEvent", InputEvent.class, int.class);
 
-            // No permanent background finger for InputManager path.
-            // Uses pure single-touch ACTION_DOWN → MOVE → UP with
-            // pointer ID 5~12 so physical touch (0~4) coexists.
+            bgDownTime = SystemClock.uptimeMillis();
+            MotionEvent bgDown = MotionEvent.obtain(bgDownTime, bgDownTime, MotionEvent.ACTION_DOWN, 1,
+                new MotionEvent.PointerProperties[]{ptr(bgId)}, new MotionEvent.PointerCoords[]{bgCoord()},
+                0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+            injectInputEvent.invoke(inputMan, bgDown, INJECT_MODE_ASYNC);
+            bgDown.recycle();
 
             inputManager = inputMan;
             injectMethod = injectInputEvent;
+            bgDownTime = SystemClock.uptimeMillis();
             available = true;
-            Log.d(TAG, "RemoteInjector ready via injectInputEvent, pid=" + Process.myPid() + " touchId=" + touchId);
+            Log.d(TAG, "RemoteInjector ready via injectInputEvent, pid=" + Process.myPid() + " bgId=" + bgId);
             return true;
         } catch (Exception e) {
             Log.e(TAG, "init: injectInputEvent failed: " + e.getMessage());
@@ -183,8 +181,15 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
         if (!available) return;
         if (uinputFd >= 0) {
             uinputSendMove(uinputFd, (int)bgX, (int)bgY, bgId);
+        } else if (inputManager != null && injectMethod != null) {
+            try {
+                MotionEvent m = MotionEvent.obtain(bgDownTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, 1,
+                    new MotionEvent.PointerProperties[]{ptr(bgId)}, new MotionEvent.PointerCoords[]{bgCoord()},
+                    0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+                injectMethod.invoke(inputManager, m, INJECT_MODE_ASYNC);
+                m.recycle();
+            } catch (Exception e) { Log.e(TAG, "keepAlive: " + e.getMessage()); }
         }
-        // InputManager path: no-op (no background finger to keep alive)
     }
 
     public void tap(int x, int y) throws android.os.RemoteException {
@@ -199,14 +204,16 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                 try { Thread.sleep(delay); } catch (InterruptedException e) {}
                 uinputSendUp(uinputFd, tapId);
             } else {
-                MotionEvent.PointerCoords c = coord(x, y);
-                MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1,
-                    new MotionEvent.PointerProperties[]{ptr(touchId)},
-                    new MotionEvent.PointerCoords[]{c},
+                int shift = 1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT;
+                MotionEvent.PointerCoords bgC = bgCoord();
+                MotionEvent.PointerCoords targetC = coord(x, y);
+                MotionEvent down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN | shift, 2,
+                    new MotionEvent.PointerProperties[]{ptr(bgId), ptr(tapId)},
+                    new MotionEvent.PointerCoords[]{bgC, targetC},
                     0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-                MotionEvent up = MotionEvent.obtain(now, now + delay, MotionEvent.ACTION_UP, 1,
-                    new MotionEvent.PointerProperties[]{ptr(touchId)},
-                    new MotionEvent.PointerCoords[]{c},
+                MotionEvent up = MotionEvent.obtain(bgDownTime, now + delay, MotionEvent.ACTION_POINTER_UP | shift, 2,
+                    new MotionEvent.PointerProperties[]{ptr(bgId), ptr(tapId)},
+                    new MotionEvent.PointerCoords[]{bgC, targetC},
                     0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                 injectMethod.invoke(inputManager, down, INJECT_MODE_ASYNC);
                 injectMethod.invoke(inputManager, up, INJECT_MODE_ASYNC);
@@ -237,39 +244,39 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                     uinputSendUp(uinputFd, tapId);
                 }
             } else {
+                int shift = 1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT;
                 if (!pointerDown && x1 == x2 && y1 == y2) {
-                    // First touch: ACTION_DOWN
-                    drawingPointerId = touchId;
-                    downTime = now;
+                    drawingPointerId = tapId;
                     pointerDown = true;
-                    MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1,
-                        new MotionEvent.PointerProperties[]{ptr(drawingPointerId)},
-                        new MotionEvent.PointerCoords[]{coord(x1, y1)},
+                    MotionEvent.PointerCoords bgC = bgCoord();
+                    MotionEvent down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN | shift, 2,
+                        new MotionEvent.PointerProperties[]{ptr(bgId), ptr(drawingPointerId)},
+                        new MotionEvent.PointerCoords[]{bgC, coord(x1, y1)},
                         0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                     injectMethod.invoke(inputManager, down, INJECT_MODE_ASYNC);
                     down.recycle();
                 } else if (pointerDown) {
-                    // Continue drag: ACTION_MOVE
-                    MotionEvent move = MotionEvent.obtain(downTime, now, MotionEvent.ACTION_MOVE, 1,
-                        new MotionEvent.PointerProperties[]{ptr(drawingPointerId)},
-                        new MotionEvent.PointerCoords[]{coord(x2, y2)},
+                    MotionEvent.PointerCoords bgC = bgCoord();
+                    MotionEvent move = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_MOVE, 2,
+                        new MotionEvent.PointerProperties[]{ptr(bgId), ptr(drawingPointerId)},
+                        new MotionEvent.PointerCoords[]{bgC, coord(x2, y2)},
                         0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                     injectMethod.invoke(inputManager, move, INJECT_MODE_ASYNC);
                     move.recycle();
                 } else {
-                    // Standalone swipe: DOWN → MOVE → UP
-                    MotionEvent down = MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1,
-                        new MotionEvent.PointerProperties[]{ptr(touchId)},
-                        new MotionEvent.PointerCoords[]{coord(x1, y1)},
+                    MotionEvent.PointerCoords bgC = bgCoord();
+                    MotionEvent down = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_POINTER_DOWN | shift, 2,
+                        new MotionEvent.PointerProperties[]{ptr(bgId), ptr(tapId)},
+                        new MotionEvent.PointerCoords[]{bgC, coord(x1, y1)},
                         0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-                    MotionEvent move = MotionEvent.obtain(now, now + durationMs, MotionEvent.ACTION_MOVE, 1,
-                        new MotionEvent.PointerProperties[]{ptr(touchId)},
-                        new MotionEvent.PointerCoords[]{coord(x2, y2)},
+                    MotionEvent move = MotionEvent.obtain(bgDownTime, now + durationMs, MotionEvent.ACTION_MOVE, 2,
+                        new MotionEvent.PointerProperties[]{ptr(bgId), ptr(tapId)},
+                        new MotionEvent.PointerCoords[]{bgC, coord(x2, y2)},
                         0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                     int upDelay = 3 + rng.nextInt(6);
-                    MotionEvent up = MotionEvent.obtain(now, now + durationMs + upDelay, MotionEvent.ACTION_UP, 1,
-                        new MotionEvent.PointerProperties[]{ptr(touchId)},
-                        new MotionEvent.PointerCoords[]{coord(x2, y2)},
+                    MotionEvent up = MotionEvent.obtain(bgDownTime, now + durationMs + upDelay, MotionEvent.ACTION_POINTER_UP | shift, 2,
+                        new MotionEvent.PointerProperties[]{ptr(bgId), ptr(tapId)},
+                        new MotionEvent.PointerCoords[]{bgC, coord(x2, y2)},
                         0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                     injectMethod.invoke(inputManager, down, INJECT_MODE_ASYNC);
                     injectMethod.invoke(inputManager, move, INJECT_MODE_ASYNC);
@@ -289,9 +296,10 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
                 uinputSendMove(uinputFd, x, y, drawingPointerId);
             } else {
                 long now = SystemClock.uptimeMillis();
-                MotionEvent move = MotionEvent.obtain(downTime, now, MotionEvent.ACTION_MOVE, 1,
-                    new MotionEvent.PointerProperties[]{ptr(drawingPointerId)},
-                    new MotionEvent.PointerCoords[]{coord(x, y)},
+                MotionEvent.PointerCoords bgC = bgCoord();
+                MotionEvent move = MotionEvent.obtain(bgDownTime, now, MotionEvent.ACTION_MOVE, 2,
+                    new MotionEvent.PointerProperties[]{ptr(bgId), ptr(drawingPointerId)},
+                    new MotionEvent.PointerCoords[]{bgC, coord(x, y)},
                     0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                 injectMethod.invoke(inputManager, move, INJECT_MODE_ASYNC);
                 move.recycle();
@@ -309,9 +317,10 @@ public class RemoteInjectorService extends IRemoteInjector.Stub {
             } else {
                 long now = SystemClock.uptimeMillis();
                 int upDelay = 3 + rng.nextInt(6);
-                MotionEvent up = MotionEvent.obtain(downTime, now + upDelay, MotionEvent.ACTION_UP, 1,
-                    new MotionEvent.PointerProperties[]{ptr(drawingPointerId)},
-                    new MotionEvent.PointerCoords[]{coord(0f, 0f)},
+                MotionEvent.PointerCoords bgC = bgCoord();
+                MotionEvent up = MotionEvent.obtain(bgDownTime, now + upDelay, MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2,
+                    new MotionEvent.PointerProperties[]{ptr(bgId), ptr(drawingPointerId)},
+                    new MotionEvent.PointerCoords[]{bgC, bgC},
                     0, 0, 0.8f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
                 injectMethod.invoke(inputManager, up, INJECT_MODE_ASYNC);
                 up.recycle();

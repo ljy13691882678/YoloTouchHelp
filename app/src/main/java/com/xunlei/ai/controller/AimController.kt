@@ -37,13 +37,6 @@ class AimController(
     var bezierDuration = 30
     var bezierControlOffset = 0.3f
     var bezierRandomSpread = 0.1f
-    // 仿生自瞄参数
-    var bionicReactionMin = 80
-    var bionicReactionMax = 250
-    var bionicJitter = 1.5f
-    var bionicOvershoot = 0.08f
-    var bionicImperfect = 2.5f
-    var bionicSpeedVar = 0.15f
     var convergeThresh = 10f
     var aimOffsetYRatio = 0f
     var aimSwayAmplitude = 0
@@ -406,10 +399,10 @@ class AimController(
     }
 
     fun executeAiming(targetX: Float, targetY: Float, cx: Float, cy: Float) {
-        when (aimMode) {
-            1 -> executeAimingBezier(targetX, targetY, cx, cy)
-            2 -> executeAimingBionic(targetX, targetY, cx, cy)
-            else -> executeAimingPid(targetX, targetY, cx, cy)
+        if (aimMode == 1) {
+            executeAimingBezier(targetX, targetY, cx, cy)
+        } else {
+            executeAimingPid(targetX, targetY, cx, cy)
         }
     }
 
@@ -470,150 +463,6 @@ class AimController(
             if (!clamped && applyDragSafety()) return
             touchClient()?.moveTo(aimingState.centerX.toInt(), aimingState.centerY.toInt())
         }
-    }
-
-    private fun executeAimingBionic(targetX: Float, targetY: Float, cx: Float, cy: Float) {
-        val now = System.currentTimeMillis()
-        val errorX = targetX - cx
-        val errorY = targetY - cy
-        val dist = Math.sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
-
-        val trackId = aimingState.committedTrackId
-        val trackChanged = trackId != aimingState.bionicLastTrackId && trackId >= 0
-
-        if (!aimingState.pointerDown) {
-            if (dist < convergeThresh) return
-            val aimArea = savedAreas().getOrNull(AREA_INDEX_AIM)
-            if (aimArea != null) {
-                aimingState.centerX = aimArea.x + (Math.random() * aimArea.width).toFloat()
-                aimingState.centerY = aimArea.y + (Math.random() * aimArea.height).toFloat()
-            } else {
-                aimingState.centerX = cx
-                aimingState.centerY = cy
-            }
-            aimingState.startX = aimingState.centerX
-            aimingState.startY = aimingState.centerY
-
-            touchClient()?.swipe(aimingState.centerX.toInt(), aimingState.centerY.toInt(), aimingState.centerX.toInt(), aimingState.centerY.toInt(), 0)
-            aimingState.pointerDown = true
-
-            val reaction = (bionicReactionMin + Math.random() * (bionicReactionMax - bionicReactionMin)).toLong()
-            aimingState.bionicReactionEndMs = now + reaction
-            aimingState.bionicAimStartMs = 0L
-            aimingState.bionicLastTrackId = trackId
-            aimingState.bionicJitterPhase = (Math.random() * Math.PI * 2).toFloat()
-            return
-        }
-
-        if (trackChanged) {
-            aimingState.bionicLastTrackId = trackId
-            val reaction = (bionicReactionMin * 0.6 + Math.random() * (bionicReactionMax - bionicReactionMin) * 0.5).toLong()
-            aimingState.bionicReactionEndMs = now + reaction
-            aimingState.bionicAimStartMs = 0L
-        }
-
-        if (now < aimingState.bionicReactionEndMs) {
-            val jitter = bionicJitter * 0.3f
-            val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter
-            val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.7f).toFloat() * jitter
-            aimingState.bionicJitterPhase += 0.15f
-            if (dist < convergeThresh * 3) {
-                aimingState.centerX += jx
-                aimingState.centerY += jy
-                val clamped = clampToAimArea()
-                if (!clamped && applyDragSafety()) return
-                touchClient()?.moveTo(aimingState.centerX.toInt(), aimingState.centerY.toInt())
-            }
-            return
-        }
-
-        if (aimingState.bionicAimStartMs == 0L) {
-            aimingState.bionicAimStartMs = now
-            aimingState.bionicStartX = aimingState.centerX
-            aimingState.bionicStartY = aimingState.centerY
-            aimingState.bionicTargetX = targetX
-            aimingState.bionicTargetY = targetY
-            aimingState.bionicOvershootPeaked = false
-
-            val baseDuration = 180f + dist * 0.4f
-            val speedVar = 1f + (Math.random().toFloat() - 0.5f) * bionicSpeedVar * 2f
-            aimingState.bionicAimDurationMs = (baseDuration * speedVar).toLong().coerceIn(120L, 800L)
-        }
-
-        val elapsed = (now - aimingState.bionicAimStartMs).toFloat()
-        val totalDur = aimingState.bionicAimDurationMs.toFloat()
-        var t = (elapsed / totalDur).coerceIn(0f, 1.5f)
-
-        val imperfection = bionicImperfect
-        val imperfectX = (Math.random().toFloat() - 0.5f) * imperfection
-        val imperfectY = (Math.random().toFloat() - 0.5f) * imperfection
-        var tgtX = aimingState.bionicTargetX + imperfectX
-        var tgtY = aimingState.bionicTargetY + imperfectY
-
-        val overshootAmt = bionicOvershoot
-        val sigT = sigmoidProgress(t.coerceIn(0f, 1f))
-
-        var progress = sigT
-        if (t <= 1f) {
-            progress = sigT
-        } else if (!aimingState.bionicOvershootPeaked) {
-            val overshootT = (t - 1f) / 0.4f
-            if (overshootT >= 1f) {
-                aimingState.bionicOvershootPeaked = true
-            }
-            val overshootEase = 1f - (1f - overshootT.coerceIn(0f, 1f)) * (1f - overshootT.coerceIn(0f, 1f))
-            progress = 1f + overshootAmt * overshootEase
-        } else {
-            val correctT = (t - 1.4f) / 0.6f
-            val correctEase = 1f - (1f - correctT.coerceIn(0f, 1f)) * (1f - correctT.coerceIn(0f, 1f))
-            progress = 1f + overshootAmt - overshootAmt * correctEase.coerceIn(0f, 1f)
-        }
-
-        val dx = tgtX - aimingState.bionicStartX
-        val dy = tgtY - aimingState.bionicStartY
-        var newX = aimingState.bionicStartX + dx * progress
-        var newY = aimingState.bionicStartY + dy * progress
-
-        if (t >= 2f || dist < convergeThresh * 0.8f) {
-            aimingState.bionicAimStartMs = 0L
-            aimingState.bionicStartX = newX
-            aimingState.bionicStartY = newY
-            aimingState.bionicTargetX = targetX
-            aimingState.bionicTargetY = targetY
-            aimingState.bionicOvershootPeaked = false
-            val microDur = (100 + dist * 3).coerceIn(60f, 250f)
-            aimingState.bionicAimDurationMs = microDur.toLong()
-            aimingState.bionicAimStartMs = now
-        }
-
-        val jitter = bionicJitter
-        val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter
-        val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.6f + 1.3f).toFloat() * jitter
-        aimingState.bionicJitterPhase += 0.1f + Math.random().toFloat() * 0.05f
-        newX += jx
-        newY += jy
-
-        newY += currentRecoilOffset()
-        if (aimSwayAmplitude > 0) newY += computeSway()
-
-        val smooth = moveSmooth.coerceIn(0f, 0.95f)
-        val smoothMoveX = newX - aimingState.centerX
-        val smoothMoveY = newY - aimingState.centerY
-        aimingState.lastMoveX = aimingState.lastMoveX * smooth + smoothMoveX * (1f - smooth)
-        aimingState.lastMoveY = aimingState.lastMoveY * smooth + smoothMoveY * (1f - smooth)
-        aimingState.centerX += aimingState.lastMoveX
-        aimingState.centerY += aimingState.lastMoveY
-
-        val clamped = clampToAimArea()
-        if (!clamped && applyDragSafety()) return
-        touchClient()?.moveTo(aimingState.centerX.toInt(), aimingState.centerY.toInt())
-    }
-
-    private fun sigmoidProgress(t: Float): Float {
-        if (t <= 0f) return 0f
-        if (t >= 1f) return 1f
-        val x = t * 12f - 6f
-        return (1f / (1f + Math.exp(-x.toDouble()))).toFloat()
     }
 
     private fun executeAimingPid(targetX: Float, targetY: Float, cx: Float, cy: Float) {
