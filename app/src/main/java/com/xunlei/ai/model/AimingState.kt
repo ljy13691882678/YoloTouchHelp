@@ -39,13 +39,15 @@ data class AimingState(
     var commitFrameCount: Int = 0,
     // Bionic (拟人) aim state
     var bionicReactionEndMs: Long = 0,
-    var bionicAimStartMs: Long = 0,
-    var bionicOvershootPeaked: Boolean = false,
     var bionicJitterPhase: Float = 0f,
     var bionicImperfectX: Float = 0f,
     var bionicImperfectY: Float = 0f,
+    var bionicImperfectTargetX: Float = 0f,
+    var bionicImperfectTargetY: Float = 0f,
+    var bionicImperfectUpdateMs: Long = 0,
     var bionicSpeedFactor: Float = 1f,
-    var bionicLastTargetId: Int = -1,
+    var bionicSpeedPhase: Float = 0f,
+    var bionicLastFrameMs: Long = 0,
 ) {
     fun updateVelocity(cx: Float, cy: Float) {
         if (!prevTargetX.isNaN()) {
@@ -80,12 +82,14 @@ data class AimingState(
         commitFrameCount = 0
         // Reset bionic
         bionicReactionEndMs = 0
-        bionicAimStartMs = 0
-        bionicOvershootPeaked = false
         bionicJitterPhase = 0f
         bionicImperfectX = 0f
         bionicImperfectY = 0f
+        bionicImperfectTargetX = 0f
+        bionicImperfectTargetY = 0f
+        bionicImperfectUpdateMs = 0
         bionicSpeedFactor = 1f
-        bionicLastTargetId = -1
+        bionicSpeedPhase = 0f
+        bionicLastFrameMs = 0
     }
 }
