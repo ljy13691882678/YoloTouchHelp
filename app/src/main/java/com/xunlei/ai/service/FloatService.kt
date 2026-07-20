@@ -131,6 +131,9 @@ class FloatService : Service() {
     // Bezier aim state
     private var aimMode = 0 // 0=PID, 1=Bezier
     private var bezierDuration = 30; private var bezierControlOffset = 0.3f; private var bezierRandomSpread = 0.1f
+    private var bionicReactionMin = 80; private var bionicReactionMax = 250
+    private var bionicJitter = 1.5f; private var bionicOvershoot = 0.08f
+    private var bionicImperfect = 2.5f; private var bionicSpeedVar = 0.15f
     private var convergeThresh = 10f
 
     // Hold-to-fire (按住激发) state — uses trigger slot, separate from aim slot
@@ -254,6 +257,12 @@ private var triggerOverlay: TriggerOverlayView? = null
         aimController.bezierDuration = bezierDuration
         aimController.bezierControlOffset = bezierControlOffset
         aimController.bezierRandomSpread = bezierRandomSpread
+        aimController.bionicReactionMin = bionicReactionMin
+        aimController.bionicReactionMax = bionicReactionMax
+        aimController.bionicJitter = bionicJitter
+        aimController.bionicOvershoot = bionicOvershoot
+        aimController.bionicImperfect = bionicImperfect
+        aimController.bionicSpeedVar = bionicSpeedVar
         aimController.convergeThresh = convergeThresh
         aimController.aimOffsetYRatio = aimOffsetYRatio
         aimController.aimSwayAmplitude = aimSwayAmplitude
@@ -347,6 +356,12 @@ private var triggerOverlay: TriggerOverlayView? = null
         bezierDuration = cfg.bezierDuration
         bezierControlOffset = cfg.bezierControlOffset
         bezierRandomSpread = cfg.bezierRandomSpread
+        bionicReactionMin = cfg.bionicReactionMin
+        bionicReactionMax = cfg.bionicReactionMax
+        bionicJitter = cfg.bionicJitter
+        bionicOvershoot = cfg.bionicOvershoot
+        bionicImperfect = cfg.bionicImperfect
+        bionicSpeedVar = cfg.bionicSpeedVar
         convergeThresh = cfg.convergeThresh.toFloat()
         touchDisplayEnabled = cfg.aimTouchDisplay
         cachedRangePx = cfg.range.coerceIn(50, 800)
@@ -716,6 +731,9 @@ private var triggerOverlay: TriggerOverlayView? = null
             guiPanel.pidSamplePeriodMs = pidSamplePeriodMs
             guiPanel.aimMode = aimMode; guiPanel.bezierDuration = bezierDuration
             guiPanel.bezierControlOffset = bezierControlOffset; guiPanel.bezierRandomSpread = bezierRandomSpread
+            guiPanel.bionicReactionMin = bionicReactionMin; guiPanel.bionicReactionMax = bionicReactionMax
+            guiPanel.bionicJitter = bionicJitter; guiPanel.bionicOvershoot = bionicOvershoot
+            guiPanel.bionicImperfect = bionicImperfect; guiPanel.bionicSpeedVar = bionicSpeedVar
             guiPanel.convergeThresh = convergeThresh.toInt()
             guiPanel.targetLostTolerance = targetLostTolerance; guiPanel.showLockRay = showLockRay
             guiPanel.lockBoxThreshold = lockBoxThreshold; guiPanel.lockCenterWeight = lockCenterWeight
@@ -758,6 +776,9 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.triggerOffsetYRatio = cfg.triggerOffsetYRatio; guiPanel.ki = cfg.ki; guiPanel.kd = cfg.kd
         guiPanel.aimMode = cfg.aimMode; guiPanel.bezierDuration = cfg.bezierDuration
         guiPanel.bezierControlOffset = cfg.bezierControlOffset; guiPanel.bezierRandomSpread = cfg.bezierRandomSpread
+        guiPanel.bionicReactionMin = cfg.bionicReactionMin; guiPanel.bionicReactionMax = cfg.bionicReactionMax
+        guiPanel.bionicJitter = cfg.bionicJitter; guiPanel.bionicOvershoot = cfg.bionicOvershoot
+        guiPanel.bionicImperfect = cfg.bionicImperfect; guiPanel.bionicSpeedVar = cfg.bionicSpeedVar
         guiPanel.convergeThresh = cfg.convergeThresh
         guiPanel.aimTouchDisplay = cfg.aimTouchDisplay; guiPanel.aimTouchSize = 20
         guiPanel.modelRunning = modelRunning; guiPanel.recordEnabled = recordEnabled; guiPanel.autoSaveDataset = autoSaveDataset
@@ -796,6 +817,9 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.deadzoneHoldFrames = deadzoneHoldFrames; guiPanel.edgeReturnStrength = edgeReturnStrength
         guiPanel.aimMode = aimMode; guiPanel.bezierDuration = bezierDuration
         guiPanel.bezierControlOffset = bezierControlOffset; guiPanel.bezierRandomSpread = bezierRandomSpread
+        guiPanel.bionicReactionMin = bionicReactionMin; guiPanel.bionicReactionMax = bionicReactionMax
+        guiPanel.bionicJitter = bionicJitter; guiPanel.bionicOvershoot = bionicOvershoot
+        guiPanel.bionicImperfect = bionicImperfect; guiPanel.bionicSpeedVar = bionicSpeedVar
         guiPanel.convergeThresh = convergeThresh.toInt()
         guiPanel.autoTriggerAdsEnabled = autoTriggerAdsEnabled; guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
         guiPanel.touchOrientationMode = touchOrientationMode; guiPanel.touchScheme = touchScheme
@@ -863,6 +887,12 @@ private var triggerOverlay: TriggerOverlayView? = null
         guiPanel.onBezierDurationChanged = { bezierDuration = it; guiPanel.bezierDuration = it; aimController.bezierDuration = it; ConfigManager.updateConfig { bezierDuration = it } }
         guiPanel.onBezierControlOffsetChanged = { bezierControlOffset = it; guiPanel.bezierControlOffset = it; aimController.bezierControlOffset = it; ConfigManager.updateConfig { bezierControlOffset = it } }
         guiPanel.onBezierRandomSpreadChanged = { bezierRandomSpread = it; guiPanel.bezierRandomSpread = it; aimController.bezierRandomSpread = it; ConfigManager.updateConfig { bezierRandomSpread = it } }
+        guiPanel.onBionicReactionMinChanged = { bionicReactionMin = it; guiPanel.bionicReactionMin = it; aimController.bionicReactionMin = it; ConfigManager.updateConfig { bionicReactionMin = it } }
+        guiPanel.onBionicReactionMaxChanged = { bionicReactionMax = it; guiPanel.bionicReactionMax = it; aimController.bionicReactionMax = it; ConfigManager.updateConfig { bionicReactionMax = it } }
+        guiPanel.onBionicJitterChanged = { bionicJitter = it; guiPanel.bionicJitter = it; aimController.bionicJitter = it; ConfigManager.updateConfig { bionicJitter = it } }
+        guiPanel.onBionicOvershootChanged = { bionicOvershoot = it; guiPanel.bionicOvershoot = it; aimController.bionicOvershoot = it; ConfigManager.updateConfig { bionicOvershoot = it } }
+        guiPanel.onBionicImperfectChanged = { bionicImperfect = it; guiPanel.bionicImperfect = it; aimController.bionicImperfect = it; ConfigManager.updateConfig { bionicImperfect = it } }
+        guiPanel.onBionicSpeedVarChanged = { bionicSpeedVar = it; guiPanel.bionicSpeedVar = it; aimController.bionicSpeedVar = it; ConfigManager.updateConfig { bionicSpeedVar = it } }
         guiPanel.onConvergeThreshChanged = { convergeThresh = it.toFloat(); guiPanel.convergeThresh = it; aimController.convergeThresh = it.toFloat(); ConfigManager.updateConfig { convergeThresh = it } }
         guiPanel.onAimHoldEnabled = { aimHoldEnabled = it; guiPanel.aimHoldEnabled = it; aimController.aimHoldEnabled = it; ConfigManager.updateConfig { aimHoldEnabled = it } }
         guiPanel.onAimTouchDisplay = { show ->

@@ -36,7 +36,18 @@ data class AimingState(
     var committedMissingFrames: Int = 0,
     var commitKillConfirmFrames: Int = 12,   // 目标消失N帧后认为已击杀
     var commitMinHoldFrames: Int = 3,        // 最少锁定帧数后才算正式commit
-    var commitFrameCount: Int = 0
+    var commitFrameCount: Int = 0,
+    // 仿生自瞄状态
+    var bionicReactionEndMs: Long = 0L,
+    var bionicAimStartMs: Long = 0L,
+    var bionicAimDurationMs: Long = 0L,
+    var bionicStartX: Float = 0f,
+    var bionicStartY: Float = 0f,
+    var bionicTargetX: Float = 0f,
+    var bionicTargetY: Float = 0f,
+    var bionicOvershootPeaked: Boolean = false,
+    var bionicJitterPhase: Float = 0f,
+    var bionicLastTrackId: Int = -1
 ) {
     fun updateVelocity(cx: Float, cy: Float) {
         if (!prevTargetX.isNaN()) {
@@ -69,5 +80,16 @@ data class AimingState(
         committedBox = null
         committedMissingFrames = 0
         commitFrameCount = 0
+        // Reset bionic state
+        bionicReactionEndMs = 0L
+        bionicAimStartMs = 0L
+        bionicAimDurationMs = 0L
+        bionicStartX = 0f
+        bionicStartY = 0f
+        bionicTargetX = 0f
+        bionicTargetY = 0f
+        bionicOvershootPeaked = false
+        bionicJitterPhase = 0f
+        bionicLastTrackId = -1
     }
 }
