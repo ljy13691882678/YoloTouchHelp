@@ -52,10 +52,6 @@ JNIEXPORT jint JNICALL
 Java_com_xunlei_ai_service_RemoteInjectorService_openUinputNative(
     JNIEnv*, jobject)
 {
-    // Shizuku path: don't grab physical device, only upload virtual fingers.
-    // Physical touches go through the real device, injected touches through uinput.
-    // Both coexist because they come from different kernel input devices.
-    touch_set_no_grab(true);
     if (touch_init(g_screen_w, g_screen_h)) {
         LOGD("openUinputNative: OK, virtual_slot=%d trigger_slot=%d virtual_id=%d trigger_id=%d",
              touch_get_virtual_slot(), touch_get_trigger_slot(),

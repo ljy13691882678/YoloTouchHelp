@@ -33,10 +33,16 @@ class AimController(
     var pidSamplePeriodMs = 8
 
     // Aim settings
-    var aimMode = 0 // 0=PID, 1=Bezier
+    var aimMode = 0 // 0=PID, 1=Bezier, 2=Bionic
     var bezierDuration = 30
     var bezierControlOffset = 0.3f
     var bezierRandomSpread = 0.1f
+    var bionicReactionMin = 80
+    var bionicReactionMax = 250
+    var bionicJitter = 1.5f
+    var bionicOvershoot = 0.08f
+    var bionicImperfect = 2.5f
+    var bionicSpeedVar = 0.15f
     var convergeThresh = 10f
     var aimOffsetYRatio = 0f
     var aimSwayAmplitude = 0
@@ -399,10 +405,10 @@ class AimController(
     }
 
     fun executeAiming(targetX: Float, targetY: Float, cx: Float, cy: Float) {
-        if (aimMode == 1) {
-            executeAimingBezier(targetX, targetY, cx, cy)
-        } else {
-            executeAimingPid(targetX, targetY, cx, cy)
+        when (aimMode) {
+            1 -> executeAimingBezier(targetX, targetY, cx, cy)
+            2 -> executeAimingBionic(targetX, targetY, cx, cy)
+            else -> executeAimingPid(targetX, targetY, cx, cy)
         }
     }
 
@@ -588,6 +594,154 @@ class AimController(
             aimingState.centerY = aimingState.centerY.coerceIn(minY, maxY)
         }
         return clamped
+    }
+
+    private fun bionicSpeedRatio(dist: Float): Float {
+        if (dist <= 0f) return 0f
+        val normalized = (dist / 300f).coerceIn(0f, 1f)
+        val x = normalized * 10f - 3f
+        return (1f / (1f + Math.exp(-x.toDouble()))).toFloat().coerceIn(0.05f, 1f)
+    }
+
+    private fun executeAimingBionic(targetX: Float, targetY: Float, cx: Float, cy: Float) {
+        val now = System.currentTimeMillis()
+        val errorX = targetX - cx
+        val errorY = targetY - cy
+        val dist = Math.sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
+
+        if (!aimingState.pointerDown) {
+            if (Math.abs(errorX) < convergeThresh && Math.abs(errorY) < convergeThresh) return
+
+            val aimArea = savedAreas().getOrNull(AREA_INDEX_AIM)
+            if (aimArea != null) {
+                aimingState.centerX = aimArea.x + (Math.random() * aimArea.width).toFloat()
+                aimingState.centerY = aimArea.y + (Math.random() * aimArea.height).toFloat()
+            } else {
+                aimingState.centerX = cx
+                aimingState.centerY = cy
+            }
+            aimingState.startX = aimingState.centerX
+            aimingState.startY = aimingState.centerY
+
+            val reactionMin = bionicReactionMin.coerceIn(20, 500)
+            val reactionMax = bionicReactionMax.coerceIn(reactionMin, 1000)
+            val reactionTime = (reactionMin + Math.random() * (reactionMax - reactionMin)).toLong()
+            aimingState.bionicReactionEndMs = now + reactionTime
+            aimingState.bionicJitterPhase = (Math.random() * Math.PI * 2).toFloat()
+            aimingState.bionicImperfectX = 0f
+            aimingState.bionicImperfectY = 0f
+            aimingState.bionicImperfectTargetX = 0f
+            aimingState.bionicImperfectTargetY = 0f
+            aimingState.bionicImperfectUpdateMs = 0
+            aimingState.bionicSpeedFactor = 1f
+            aimingState.bionicSpeedPhase = (Math.random() * Math.PI * 2).toFloat()
+            aimingState.bionicLastFrameMs = now
+            aimingState.lastMoveX = 0f
+            aimingState.lastMoveY = 0f
+
+            touchClient()?.swipe(aimingState.centerX.toInt(), aimingState.centerY.toInt(), aimingState.centerX.toInt(), aimingState.centerY.toInt(), 0)
+            aimingState.pointerDown = true
+            Log.d(TAG, "bionic aim DOWN, reaction=${reactionTime}ms dist=${dist.toInt()}px")
+        } else {
+            val dt = (now - aimingState.bionicLastFrameMs).coerceIn(1L, 100L)
+            aimingState.bionicLastFrameMs = now
+
+            if (now < aimingState.bionicReactionEndMs) {
+                val jitter = bionicJitter.coerceIn(0f, 20f)
+                if (jitter > 0f) {
+                    aimingState.bionicJitterPhase += 0.12f * (dt.toFloat() / 8f)
+                    val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter * 0.25f
+                    val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.7f).toFloat() * jitter * 0.25f
+                    aimingState.centerX += jx
+                    aimingState.centerY += jy
+                    clampToAimArea()
+                    touchClient()?.moveTo(aimingState.centerX.toInt(), aimingState.centerY.toInt())
+                }
+                return
+            }
+
+            if (dist < 1f) {
+                aimingState.deadzoneFrames = 0
+                return
+            }
+
+            val imperfect = bionicImperfect.coerceIn(0f, 30f)
+            if (imperfect > 0f) {
+                if (now >= aimingState.bionicImperfectUpdateMs) {
+                    val angle = Math.random() * Math.PI * 2
+                    val radius = Math.random() * imperfect
+                    aimingState.bionicImperfectTargetX = Math.cos(angle).toFloat() * radius
+                    aimingState.bionicImperfectTargetY = Math.sin(angle).toFloat() * radius
+                    val updateInterval = (800 + Math.random() * 1200).toLong()
+                    aimingState.bionicImperfectUpdateMs = now + updateInterval
+                }
+                val imperfectionLerp = 0.02f * (dt.toFloat() / 8f)
+                aimingState.bionicImperfectX += (aimingState.bionicImperfectTargetX - aimingState.bionicImperfectX) * imperfectionLerp
+                aimingState.bionicImperfectY += (aimingState.bionicImperfectTargetY - aimingState.bionicImperfectY) * imperfectionLerp
+            }
+
+            val adjTargetX = targetX + aimingState.bionicImperfectX
+            val adjTargetY = targetY + aimingState.bionicImperfectY
+            val adjErrorX = adjTargetX - cx
+            val adjErrorY = adjTargetY - cy
+            val adjDist = Math.sqrt((adjErrorX * adjErrorX + adjErrorY * adjErrorY).toDouble()).toFloat()
+
+            if (adjDist < 0.5f) {
+                aimingState.lastMoveX = 0f
+                aimingState.lastMoveY = 0f
+                if (aimingState.pointerDown) aimingState.deadzoneFrames = 0
+                return
+            }
+
+            val speedRatio = bionicSpeedRatio(adjDist)
+            val speedVar = bionicSpeedVar.coerceIn(0f, 0.5f)
+            aimingState.bionicSpeedPhase += 0.03f * (dt.toFloat() / 8f)
+            val speedMod = 1f - speedVar + Math.sin(aimingState.bionicSpeedPhase.toDouble()).toFloat() * speedVar * 0.5f
+            val effectiveSpeedRatio = (speedRatio * speedMod.coerceIn(0.5f, 1.5f)).coerceIn(0.05f, 1.2f)
+
+            val maxSpeedPxPerFrame = 80f
+            val baseSpeed = adjDist * 0.35f
+            val targetSpeed = (baseSpeed * effectiveSpeedRatio).coerceIn(1f, maxSpeedPxPerFrame)
+
+            val dirX = adjErrorX / adjDist
+            val dirY = adjErrorY / adjDist
+            var moveX = dirX * targetSpeed
+            var moveY = dirY * targetSpeed
+
+            val jitter = bionicJitter.coerceIn(0f, 20f)
+            if (jitter > 0f) {
+                aimingState.bionicJitterPhase += 0.08f * (dt.toFloat() / 8f)
+                val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter * 0.6f
+                val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.6f + 1.3f).toFloat() * jitter * 0.6f
+                moveX += jx
+                moveY += jy
+            }
+
+            moveY += currentRecoilOffset()
+            if (aimSwayAmplitude > 0) moveY += computeSway()
+
+            val smooth = moveSmooth.coerceIn(0f, 0.95f)
+            val frameSmooth = 1f - (1f - smooth) * (dt.toFloat() / 8f)
+            moveX = aimingState.lastMoveX * frameSmooth + moveX * (1f - frameSmooth)
+            moveY = aimingState.lastMoveY * frameSmooth + moveY * (1f - frameSmooth)
+            aimingState.lastMoveX = moveX
+            aimingState.lastMoveY = moveY
+
+            val moveDist = Math.sqrt((moveX * moveX + moveY * moveY).toDouble()).toFloat()
+            if (moveDist > adjDist) {
+                val scale = adjDist / moveDist
+                moveX *= scale
+                moveY *= scale
+            }
+
+            aimingState.deadzoneFrames = 0
+            aimingState.centerX += moveX
+            aimingState.centerY += moveY
+
+            val clamped = clampToAimArea()
+            if (!clamped && applyDragSafety()) return
+            touchClient()?.moveTo(aimingState.centerX.toInt(), aimingState.centerY.toInt())
+        }
     }
 
     private fun releaseAimPointer() {
