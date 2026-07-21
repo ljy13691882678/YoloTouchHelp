@@ -649,7 +649,7 @@ class AimController(
             if (now < aimingState.bionicReactionEndMs) {
                 val jitter = bionicJitter.coerceIn(0f, 20f)
                 if (jitter > 0f) {
-                    aimingState.bionicJitterPhase += 0.12f * (dt / 8f)
+                    aimingState.bionicJitterPhase += 0.12f * (dt.toFloat() / 8f)
                     val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter * 0.25f
                     val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.7f).toFloat() * jitter * 0.25f
                     aimingState.centerX += jx
@@ -675,7 +675,7 @@ class AimController(
                     val updateInterval = (800 + Math.random() * 1200).toLong()
                     aimingState.bionicImperfectUpdateMs = now + updateInterval
                 }
-                val imperfectionLerp = 0.02f * (dt / 8f)
+                val imperfectionLerp = 0.02f * (dt.toFloat() / 8f)
                 aimingState.bionicImperfectX += (aimingState.bionicImperfectTargetX - aimingState.bionicImperfectX) * imperfectionLerp
                 aimingState.bionicImperfectY += (aimingState.bionicImperfectTargetY - aimingState.bionicImperfectY) * imperfectionLerp
             }
@@ -695,7 +695,7 @@ class AimController(
 
             val speedRatio = bionicSpeedRatio(adjDist)
             val speedVar = bionicSpeedVar.coerceIn(0f, 0.5f)
-            aimingState.bionicSpeedPhase += 0.03f * (dt / 8f)
+            aimingState.bionicSpeedPhase += 0.03f * (dt.toFloat() / 8f)
             val speedMod = 1f - speedVar + Math.sin(aimingState.bionicSpeedPhase.toDouble()).toFloat() * speedVar * 0.5f
             val effectiveSpeedRatio = (speedRatio * speedMod.coerceIn(0.5f, 1.5f)).coerceIn(0.05f, 1.2f)
 
@@ -710,7 +710,7 @@ class AimController(
 
             val jitter = bionicJitter.coerceIn(0f, 20f)
             if (jitter > 0f) {
-                aimingState.bionicJitterPhase += 0.08f * (dt / 8f)
+                aimingState.bionicJitterPhase += 0.08f * (dt.toFloat() / 8f)
                 val jx = Math.sin(aimingState.bionicJitterPhase.toDouble()).toFloat() * jitter * 0.6f
                 val jy = Math.cos(aimingState.bionicJitterPhase.toDouble() * 0.6f + 1.3f).toFloat() * jitter * 0.6f
                 moveX += jx
@@ -721,7 +721,7 @@ class AimController(
             if (aimSwayAmplitude > 0) moveY += computeSway()
 
             val smooth = moveSmooth.coerceIn(0f, 0.95f)
-            val frameSmooth = 1f - (1f - smooth) * (dt / 8f)
+            val frameSmooth = 1f - (1f - smooth) * (dt.toFloat() / 8f)
             moveX = aimingState.lastMoveX * frameSmooth + moveX * (1f - frameSmooth)
             moveY = aimingState.lastMoveY * frameSmooth + moveY * (1f - frameSmooth)
             aimingState.lastMoveX = moveX
