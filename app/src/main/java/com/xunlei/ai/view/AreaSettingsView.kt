@@ -503,6 +503,11 @@ class AreaSettingsView(context: Context) : View(context) {
         animate().alpha(0f).setDuration(150).withEndAction {
             visibility = View.GONE
             state = State.CLOSED
+            // Recycle background bitmap
+            if (backgroundBitmap != null && !backgroundBitmap!!.isRecycled) {
+                backgroundBitmap!!.recycle()
+                backgroundBitmap = null
+            }
             if (confirmed) onConfirm?.invoke(areas.toList())
             else onCancel?.invoke()
         }.start()
