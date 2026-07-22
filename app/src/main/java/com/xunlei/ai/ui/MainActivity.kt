@@ -1211,6 +1211,198 @@ class MainActivity : AppCompatActivity() {
         fun exitApp() {
             runOnUiThread { exitApplication() }
         }
+
+        // ======== Float Menu Control Bridge Methods ========
+
+        @JavascriptInterface
+        fun setBool(key: String, value: Boolean) {
+            runOnUiThread {
+                // Save persistent settings to ConfigManager
+                val persistKeys = setOf("aimbotEnabled","aimHoldEnabled","recoilEnabled","triggerEnabled",
+                    "autoStopEnabled","autoTriggerAdsEnabled","showCaptureRange","showDetectionBox",
+                    "showCenterDot","showLockRay","kalmanPredictEnabled","aimTouchDisplay")
+                if (key in persistKeys) {
+                    ConfigManager.updateConfig {
+                        when (key) {
+                            "aimbotEnabled" -> aimbotEnabled = value
+                            "aimHoldEnabled" -> aimHoldEnabled = value
+                            "recoilEnabled" -> recoilEnabled = value
+                            "triggerEnabled" -> triggerEnabled = value
+                            "autoStopEnabled" -> autoStopEnabled = value
+                            "autoTriggerAdsEnabled" -> autoTriggerAdsEnabled = value
+                            "showCaptureRange" -> showCaptureRange = value
+                            "showDetectionBox" -> showDetectionBox = value
+                            "showCenterDot" -> showCenterDot = value
+                            "showLockRay" -> showLockRay = value
+                            "kalmanPredictEnabled" -> kalmanPredictEnabled = value
+                            "aimTouchDisplay" -> aimTouchDisplay = value
+                        }
+                    }
+                }
+                sendParamToService(key, if (value) "true" else "false")
+            }
+        }
+
+        @JavascriptInterface
+        fun setInt(key: String, value: Int) {
+            runOnUiThread {
+                ConfigManager.updateConfig {
+                    when (key) {
+                        "range" -> range = value
+                        "triggerReactionSpeed" -> triggerReactionSpeed = value
+                        "triggerCooldown" -> triggerCooldown = value
+                        "triggerUpFluctuation" -> triggerUpFluctuation = value
+                        "triggerDownFluctuation" -> triggerDownFluctuation = value
+                        "triggerTouchDuration" -> triggerTouchDuration = value
+                        "aimSwayAmplitude" -> aimSwayAmplitude = value
+                        "aimMode" -> aimMode = value
+                        "bezierDuration" -> bezierDuration = value
+                        "humanReactionMs" -> humanReactionMs = value
+                        "kalmanMaxMissed" -> kalmanMaxMissed = value
+                        "convergeThresh" -> convergeThresh = value
+                        "targetLostTolerance" -> targetLostTolerance = value
+                        "deadzoneHoldFrames" -> deadzoneHoldFrames = value
+                        "pidSamplePeriodMs" -> pidSamplePeriodMs = value
+                        "touchOrientationMode" -> touchOrientationMode = value
+                        "aimTouchSize" -> aimTouchSize = value
+                    }
+                }
+                sendParamToService(key, value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun setFloat(key: String, value: Float) {
+            runOnUiThread {
+                ConfigManager.updateConfig {
+                    when (key) {
+                        "speed" -> speed = value
+                        "confidence" -> confidence = value
+                        "recoilStrength" -> recoilStrength = value
+                        "ki" -> ki = value
+                        "kd" -> kd = value
+                        "bezierControlOffset" -> bezierControlOffset = value
+                        "bezierRandomSpread" -> bezierRandomSpread = value
+                        "humanSpeedFactor" -> humanSpeedFactor = value
+                        "humanJitterAmount" -> humanJitterAmount = value
+                        "humanOvershootRatio" -> humanOvershootRatio = value
+                        "aimOffsetYRatio" -> aimOffsetYRatio = value
+                        "aimPredictionMultiplier" -> aimPredictionMultiplier = value
+                        "boxAimRatio" -> boxAimRatio = value
+                        "autoTriggerAdsRange" -> autoTriggerAdsRange = value
+                        "kalmanProcessNoise" -> kalmanProcessNoise = value
+                        "kalmanMeasureNoise" -> kalmanMeasureNoise = value
+                        "kalmanBoxSmooth" -> kalmanBoxSmooth = value
+                        "kalmanMatchIouThreshold" -> kalmanMatchIouThreshold = value
+                        "lockBoxThreshold" -> lockBoxThreshold = value
+                        "lockCenterWeight" -> lockCenterWeight = value
+                        "moveSmooth" -> moveSmooth = value
+                        "edgeReturnStrength" -> edgeReturnStrength = value
+                        "triggerOffsetYRatio" -> triggerOffsetYRatio = value
+                    }
+                }
+                sendParamToService(key, value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun selectModel(index: Int) {
+            runOnUiThread {
+                val safeIndex = index.coerceIn(0, (modelList.size - 1).coerceAtLeast(0))
+                if (selectedModelIndex != safeIndex) {
+                    selectedModelIndex = safeIndex
+                    ProjectionHolder.selectedModelIndex = safeIndex
+                    ConfigManager.updateConfig { modelIndex = safeIndex }
+                    val entry = modelList.getOrNull(safeIndex)
+                    if (entry != null) {
+                        loadModel(entry.filename)
+                        syncModelToFloatService()
+                    }
+                    syncPageState()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun setAimClass(classId: Int, enabled: Boolean) {
+            runOnUiThread {
+                sendParamToService("aimClass_$classId", if (enabled) "1" else "0")
+            }
+        }
+
+        @JavascriptInterface
+        fun setTriggerClass(classId: Int, enabled: Boolean) {
+            runOnUiThread {
+                sendParamToService("triggerClass_$classId", if (enabled) "1" else "0")
+            }
+        }
+
+        @JavascriptInterface
+        fun setShowDetectionClass(classId: Int, enabled: Boolean) {
+            runOnUiThread {
+                sendParamToService("showDetectionClass_$classId", if (enabled) "1" else "0")
+            }
+        }
+
+        @JavascriptInterface
+        fun setPriorityClass(classId: Int) {
+            runOnUiThread {
+                ConfigManager.updateConfig { priorityClass = classId }
+                sendParamToService("priorityClass", classId.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun setClassAimOffset(classId: Int, value: Float) {
+            runOnUiThread {
+                sendParamToService("classAimOffset_$classId", value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun setClassBoxAimRatio(classId: Int, value: Float) {
+            runOnUiThread {
+                sendParamToService("classBoxAimRatio_$classId", value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun setClassTriggerOffset(classId: Int, value: Float) {
+            runOnUiThread {
+                sendParamToService("classTriggerOffset_$classId", value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun runAction(action: String) {
+            runOnUiThread {
+                when (action) {
+                    "testCircle" -> {
+                        try {
+                            startService(Intent(this@MainActivity, FloatService::class.java).apply { this.action = "ACTION_TEST_CIRCLE" })
+                        } catch (_: Exception) {}
+                    }
+                    "openAreaSettings" -> {
+                        try {
+                            startService(Intent(this@MainActivity, FloatService::class.java).apply { this.action = "ACTION_AREA_SETTINGS" })
+                        } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+    }
+
+    private fun sendParamToService(key: String, value: String) {
+        try {
+            val intent = Intent(this@MainActivity, FloatService::class.java).apply {
+                action = FloatService.ACTION_SET_PARAM
+                putExtra(FloatService.EXTRA_KEY, key)
+                putExtra(FloatService.EXTRA_VALUE, value)
+            }
+            startService(intent)
+        } catch (_: Exception) {
+            // Service may not be running
+        }
     }
 
     inner class DisclaimerDialogBridge {

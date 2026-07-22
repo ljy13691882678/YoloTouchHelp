@@ -72,9 +72,7 @@ object ProjectionHolder {
     }
 
     // 对 FloatService 创建的所有覆盖层视图的引用，用于从 Activity 直接移除
-    var floatBallView: View? = null
     var overlayCanvasView: View? = null
-    var guiPanelView: View? = null
     var triggerOverlayView: View? = null
     var touchDisplayView: View? = null
     var areaSettingsView: View? = null
@@ -83,9 +81,7 @@ object ProjectionHolder {
         fun remove(v: View?) {
             if (v != null) try { wm.removeView(v) } catch (_: Exception) {}
         }
-        remove(floatBallView); floatBallView = null
         remove(overlayCanvasView); overlayCanvasView = null
-        remove(guiPanelView); guiPanelView = null
         remove(triggerOverlayView); triggerOverlayView = null
         remove(touchDisplayView); touchDisplayView = null
         remove(areaSettingsView); areaSettingsView = null

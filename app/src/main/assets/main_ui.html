@@ -9,356 +9,127 @@
             color-scheme: light;
             --primary: #5b67f0;
             --primary-soft: #eef0ff;
+            --primary-soft2: rgba(91,103,240,0.12);
             --bg: #f7f8fc;
             --card: #ffffff;
             --text-main: #1f2937;
             --text-sub: #6b7280;
+            --text-soft: #94a3b8;
             --line: #e5e7eb;
             --success: #16a34a;
             --danger: #dc2626;
         }
 
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
 
-        html, body {
-            margin: 0;
-            min-height: 100%;
-            background: #f1f5f9;
-            font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-            color: var(--text-main);
-        }
+        html, body { margin: 0; min-height: 100%; background: #f1f5f9; font-family: "Microsoft YaHei","PingFang SC",sans-serif; color: var(--text-main); }
 
-        body {
-            padding: 16px;
-        }
+        body { padding: 16px; }
 
-        .shell {
-            width: 100%;
-            max-width: 480px;
-            margin: 0 auto;
-            background: var(--bg);
-            border-radius: 28px;
-            box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
-            overflow: hidden;
-            min-height: calc(100vh - 32px);
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
+        .shell { width: 100%; max-width: 480px; margin: 0 auto; background: var(--bg); border-radius: 28px; box-shadow: 0 18px 48px rgba(15,23,42,0.12); overflow: hidden; min-height: calc(100vh - 32px); display: flex; flex-direction: column; position: relative; }
 
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 22px 20px 12px;
-        }
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 22px 20px 12px; }
+        .header-title { font-size: 24px; font-weight: 700; }
+        .header-actions { display: flex; gap: 10px; }
 
-        .header-title {
-            font-size: 24px;
-            font-weight: 700;
-        }
+        .icon-btn { width: 36px; height: 36px; border: none; border-radius: 18px; background: rgba(255,255,255,0.9); color: var(--text-sub); font-size: 16px; box-shadow: 0 6px 16px rgba(15,23,42,0.08); display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+        .icon-btn svg { width: 18px; height: 18px; display: block; }
 
-        .header-actions {
-            display: flex;
-            gap: 10px;
-        }
+        .content { flex: 1; padding: 0 20px 92px; overflow-y: auto; }
+        .content::-webkit-scrollbar { width: 0; height: 0; }
 
-        .icon-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: 18px;
-            background: rgba(255, 255, 255, 0.9);
-            color: var(--text-sub);
-            font-size: 16px;
-            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-        }
+        .page { display: none; }
+        .page.active { display: block; }
 
-        .icon-btn svg {
-            width: 18px;
-            height: 18px;
-            display: block;
-        }
+        .stack { display: flex; flex-direction: column; gap: 16px; }
 
-        .content {
-            flex: 1;
-            padding: 0 20px 92px;
-        }
+        .card { background: var(--card); border-radius: 22px; padding: 18px; border: 1px solid rgba(229,231,235,0.7); box-shadow: 0 8px 22px rgba(15,23,42,0.04); }
+        .status-card { background: var(--primary-soft); border-color: rgba(91,103,240,0.12); }
+        .card-title { font-size: 16px; font-weight: 700; margin: 0 0 14px; }
 
-        .page {
-            display: none;
-        }
+        .status-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+        .status-text { font-size: 22px; font-weight: 700; color: var(--primary); }
+        .status-meta { margin-top: 4px; font-size: 13px; color: var(--text-sub); }
+        .badge { background: rgba(255,255,255,0.84); color: var(--primary); border-radius: 999px; padding: 10px 14px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 
-        .page.active {
-            display: block;
-        }
+        .grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+        .grid-item { background: rgba(255,255,255,0.68); border-radius: 16px; padding: 12px; }
+        .grid-label, .field-label { color: var(--text-sub); font-size: 12px; }
+        .grid-value, .field-value { margin-top: 6px; font-size: 14px; font-weight: 600; word-break: break-word; }
 
-        .stack {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
+        .outline-btn, .menu-row, .primary-btn, .ghost-btn { border: none; width: 100%; border-radius: 16px; font-size: 14px; }
+        .outline-btn, .ghost-btn { background: #f8fafc; color: var(--text-main); padding: 13px 14px; font-weight: 600; border: 1px solid #e2e8f0; }
+        .primary-btn { background: var(--primary); color: #fff; padding: 15px 16px; font-weight: 700; box-shadow: 0 14px 28px rgba(91,103,240,0.28); }
 
-        .card {
-            background: var(--card);
-            border-radius: 22px;
-            padding: 18px;
-            border: 1px solid rgba(229, 231, 235, 0.7);
-            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
-        }
+        .menu-section-title { margin: 0 0 10px; padding: 0 4px; color: var(--primary); font-size: 15px; font-weight: 700; }
+        .menu-list { background: var(--card); border-radius: 22px; border: 1px solid rgba(229,231,235,0.7); overflow: hidden; box-shadow: 0 8px 22px rgba(15,23,42,0.04); }
+        .menu-row { background: transparent; color: var(--text-main); padding: 16px 18px; text-align: left; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; }
+        .menu-row:last-child { border-bottom: none; }
+        .menu-sub { display: block; margin-top: 4px; color: var(--text-sub); font-size: 12px; font-weight: 400; }
+        .arrow { color: #94a3b8; font-size: 18px; margin-left: 10px; }
 
-        .status-card {
-            background: var(--primary-soft);
-            border-color: rgba(91, 103, 240, 0.12);
-        }
+        .bottom-nav { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.96); border-top: 1px solid #eef2f7; padding: 8px 16px calc(8px + env(safe-area-inset-bottom)); display: flex; justify-content: space-around; }
+        .nav-btn { flex: 1; border: none; background: transparent; color: var(--text-sub); padding: 8px 0 6px; font-size: 12px; font-weight: 600; }
+        .nav-btn.active { color: var(--primary); }
 
-        .card-title {
-            font-size: 16px;
-            font-weight: 700;
-            margin: 0 0 14px;
-        }
+        .status-pill { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.72); color: var(--text-sub); font-size: 12px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+        .dot.running { background: var(--success); }
 
-        .status-top {
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: flex-start;
-        }
+        .model-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .model-name { font-size: 15px; font-weight: 700; }
+        .field-list { display: flex; flex-direction: column; gap: 12px; }
+        .field-row { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+        .field-row .field-value { margin-top: 0; text-align: right; max-width: 60%; }
 
-        .status-text {
-            font-size: 22px;
-            font-weight: 700;
-            color: var(--primary);
-        }
+        /* === Floating menu styles === */
+        .section { background: var(--card); border: 1px solid rgba(255,255,255,0.72); border-radius: 16px; padding: 12px; box-shadow: 0 10px 24px rgba(15,23,42,0.06); margin-bottom: 10px; }
+        .section:last-child { margin-bottom: 0; }
+        .section-title { font-size: 12px; font-weight: 700; color: var(--text-main); margin-bottom: 10px; }
+        .section-note { font-size: 11px; line-height: 1.5; color: var(--text-sub); margin-top: 8px; }
 
-        .status-meta {
-            margin-top: 4px;
-            font-size: 13px;
-            color: var(--text-sub);
-        }
+        .setting-row { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 6px 0; border-bottom: 1px solid rgba(226,232,240,0.72); }
+        .setting-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .setting-main { flex: 1; min-width: 0; }
+        .setting-title { font-size: 13px; font-weight: 600; color: var(--text-main); }
+        .setting-desc { font-size: 11px; color: var(--text-sub); margin-top: 2px; line-height: 1.4; }
 
-        .badge {
-            background: rgba(255, 255, 255, 0.84);
-            color: var(--primary);
-            border-radius: 999px;
-            padding: 10px 14px;
-            font-size: 12px;
-            font-weight: 700;
-            white-space: nowrap;
-        }
+        .switch { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+        .switch input { appearance: none; -webkit-appearance: none; width: 100%; height: 100%; margin: 0; border-radius: 999px; background: #e2e8f0; outline: none; transition: background 0.2s ease; cursor: pointer; }
+        .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.18); transition: transform 0.2s ease; }
+        .switch input:checked { background: var(--primary); }
+        .switch input:checked::after { transform: translateX(20px); }
 
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            margin-top: 16px;
-        }
+        .value { font-size: 12px; font-weight: 700; color: var(--primary); flex-shrink: 0; }
+        .slider-block { padding: 8px 0 2px; }
+        .slider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        .slider-title { font-size: 12px; color: var(--text-sub); }
+        .slider-value { font-size: 12px; font-weight: 700; color: var(--primary); }
 
-        .grid-item {
-            background: rgba(255, 255, 255, 0.68);
-            border-radius: 16px;
-            padding: 12px;
-        }
+        .custom-slider { position: relative; height: 36px; display: flex; align-items: center; cursor: default; touch-action: none; -webkit-user-select: none; user-select: none; }
+        .custom-slider-track { width: 100%; height: 4px; background: rgba(226,232,240,0.6); border-radius: 2px; position: relative; pointer-events: none; }
+        .custom-slider-fill { height: 100%; background: var(--primary); border-radius: 2px; pointer-events: none; transition: width 0.05s linear; }
+        .custom-slider-thumb { position: absolute; top: 50%; width: 24px; height: 24px; border-radius: 50%; background: #ffffff; border: 2px solid var(--primary); box-shadow: 0 2px 8px rgba(99,102,241,0.3); transform: translate(-50%,-50%); cursor: grab; z-index: 2; touch-action: none; }
+        .custom-slider-thumb:active, .custom-slider-thumb.dragging { cursor: grabbing; transform: translate(-50%,-50%) scale(1.18); }
 
-        .grid-label,
-        .field-label {
-            color: var(--text-sub);
-            font-size: 12px;
-        }
+        .segmented { display: flex; gap: 8px; margin-top: 8px; }
+        .seg-btn { flex: 1; border: none; border-radius: 12px; padding: 10px 8px; background: rgba(241,245,249,0.9); color: var(--text-sub); font-size: 12px; font-weight: 700; cursor: pointer; }
+        .seg-btn.active { background: var(--primary); color: #ffffff; box-shadow: 0 8px 16px rgba(99,102,241,0.22); }
 
-        .grid-value,
-        .field-value {
-            margin-top: 6px;
-            font-size: 14px;
-            font-weight: 600;
-            word-break: break-word;
-        }
+        .chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .chip { border: none; border-radius: 999px; padding: 8px 12px; background: rgba(241,245,249,0.96); color: var(--text-sub); font-size: 12px; font-weight: 700; cursor: pointer; }
+        .chip.active { background: var(--primary-soft2); color: var(--primary); }
 
-        .action-row {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-        }
+        .list-button { width: 100%; border: none; border-radius: 14px; background: rgba(248,250,252,0.96); padding: 12px; text-align: left; color: var(--text-main); cursor: pointer; margin-top: 8px; }
+        .list-button:first-child { margin-top: 0; }
+        .list-button.active { background: var(--primary-soft2); outline: 1px solid rgba(99,102,241,0.18); }
+        .list-title { font-size: 13px; font-weight: 700; }
+        .list-desc { font-size: 11px; color: var(--text-sub); margin-top: 4px; line-height: 1.4; }
 
-        .outline-btn,
-        .menu-row,
-        .primary-btn,
-        .ghost-btn {
-            border: none;
-            width: 100%;
-            border-radius: 16px;
-            font-size: 14px;
-        }
-
-        .outline-btn,
-        .ghost-btn {
-            background: #f8fafc;
-            color: var(--text-main);
-            padding: 13px 14px;
-            font-weight: 600;
-            border: 1px solid #e2e8f0;
-        }
-
-        .primary-btn {
-            background: var(--primary);
-            color: #fff;
-            padding: 15px 16px;
-            font-weight: 700;
-            box-shadow: 0 14px 28px rgba(91, 103, 240, 0.28);
-        }
-
-        .menu-section-title {
-            margin: 0 0 10px;
-            padding: 0 4px;
-            color: var(--primary);
-            font-size: 15px;
-            font-weight: 700;
-        }
-
-        .menu-list {
-            background: var(--card);
-            border-radius: 22px;
-            border: 1px solid rgba(229, 231, 235, 0.7);
-            overflow: hidden;
-            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
-        }
-
-        .menu-row {
-            background: transparent;
-            color: var(--text-main);
-            padding: 16px 18px;
-            text-align: left;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #f1f5f9;
-        }
-
-        .menu-row:last-child {
-            border-bottom: none;
-        }
-
-        .menu-sub {
-            display: block;
-            margin-top: 4px;
-            color: var(--text-sub);
-            font-size: 12px;
-            font-weight: 400;
-        }
-
-        .arrow {
-            color: #94a3b8;
-            font-size: 18px;
-            margin-left: 10px;
-        }
-
-        .menu-leading {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .menu-icon {
-            width: 16px;
-            height: 16px;
-            display: inline-flex;
-            color: var(--text-main);
-        }
-
-        .bottom-nav {
-            position: absolute;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(255, 255, 255, 0.96);
-            border-top: 1px solid #eef2f7;
-            padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
-            display: flex;
-            justify-content: space-around;
-        }
-
-        .nav-btn {
-            flex: 1;
-            border: none;
-            background: transparent;
-            color: var(--text-sub);
-            padding: 8px 0 6px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .nav-btn.active {
-            color: var(--primary);
-        }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            margin-top: 10px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.72);
-            color: var(--text-sub);
-            font-size: 12px;
-        }
-
-        .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--danger);
-        }
-
-        .dot.running {
-            background: var(--success);
-        }
-
-        .model-summary {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-
-        .model-name {
-            font-size: 15px;
-            font-weight: 700;
-        }
-
-        .field-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .field-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            align-items: flex-start;
-        }
-
-        .field-row .field-value {
-            margin-top: 0;
-            text-align: right;
-            max-width: 60%;
-        }
-
-        .intro {
-            line-height: 1.7;
-            color: var(--text-sub);
-            font-size: 14px;
-            margin: 0;
-        }
+        .action-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: none; border-radius: 14px; background: rgba(248,250,252,0.96); padding: 12px; color: var(--text-main); cursor: pointer; }
+        .action-row + .action-row { margin-top: 8px; }
+        .action-arrow { color: var(--text-soft); font-size: 18px; line-height: 1; }
+        .empty { font-size: 12px; color: var(--text-sub); padding: 8px 0 2px; }
     </style>
 </head>
 <body>
@@ -367,23 +138,17 @@
         <div class="header-title" id="pageTitle">迅雷AI</div>
         <div class="header-actions">
             <button class="icon-btn" type="button" onclick="invokeNative('openDeviceInfo')" aria-label="设备信息">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="7" y="2.5" width="10" height="19" rx="2.5"/>
-                    <path d="M10.5 5.5h3"/>
-                    <circle cx="12" cy="18.2" r="0.8" fill="currentColor" stroke="none"/>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 5.5h3"/><circle cx="12" cy="18.2" r="0.8" fill="currentColor" stroke="none"/></svg>
             </button>
             <button class="icon-btn" type="button" onclick="invokeNative('exitApp')" aria-label="退出程序">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 3v9"/>
-                    <path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/></svg>
             </button>
         </div>
     </header>
 
     <main class="content">
-        <section id="homePage" class="page active">
+        <!-- Tab 0: 主页 -->
+        <section id="page_home" class="page active">
             <div class="stack">
                 <div class="card status-card">
                     <div class="status-top">
@@ -397,49 +162,23 @@
                         </div>
                         <div id="backendBadge" class="badge">---</div>
                     </div>
-
                     <div class="grid">
-                        <div class="grid-item">
-                            <div class="grid-label">权限模式</div>
-                            <div id="privilegeValue" class="grid-value">-</div>
-                        </div>
-                        <div class="grid-item">
-                            <div class="grid-label">悬浮权限</div>
-                            <div id="overlayValue" class="grid-value">-</div>
-                        </div>
+                        <div class="grid-item"><div class="grid-label">权限模式</div><div id="privilegeValue" class="grid-value">-</div></div>
+                        <div class="grid-item"><div class="grid-label">悬浮权限</div><div id="overlayValue" class="grid-value">-</div></div>
                     </div>
                 </div>
 
                 <div class="card">
                     <div class="model-summary">
-                        <div>
-                            <div class="field-label">当前模型</div>
-                            <div id="modelName" class="model-name">暂无模型</div>
-                        </div>
+                        <div><div class="field-label">当前模型</div><div id="modelName" class="model-name">暂无模型</div></div>
                         <button class="ghost-btn" type="button" style="width:auto;padding:10px 14px;" onclick="invokeNative('showModelPicker')">切换</button>
                     </div>
-
                     <div class="field-list">
-                        <div class="field-row">
-                            <div class="field-label">量化方式</div>
-                            <div id="modelPrecision" class="field-value">-</div>
-                        </div>
-                        <div class="field-row">
-                            <div class="field-label">输入尺寸</div>
-                            <div id="modelInput" class="field-value">-</div>
-                        </div>
-                        <div class="field-row">
-                            <div class="field-label">输出数量</div>
-                            <div id="modelOutput" class="field-value">-</div>
-                        </div>
-                        <div class="field-row">
-                            <div class="field-label">描述</div>
-                            <div id="modelDescription" class="field-value">-</div>
-                        </div>
-                        <div class="field-row">
-                            <div class="field-label">类别</div>
-                            <div id="modelClasses" class="field-value">-</div>
-                        </div>
+                        <div class="field-row"><div class="field-label">量化方式</div><div id="modelPrecision" class="field-value">-</div></div>
+                        <div class="field-row"><div class="field-label">输入尺寸</div><div id="modelInput" class="field-value">-</div></div>
+                        <div class="field-row"><div class="field-label">输出数量</div><div id="modelOutput" class="field-value">-</div></div>
+                        <div class="field-row"><div class="field-label">描述</div><div id="modelDescription" class="field-value">-</div></div>
+                        <div class="field-row"><div class="field-label">类别</div><div id="modelClasses" class="field-value">-</div></div>
                     </div>
                 </div>
 
@@ -447,36 +186,41 @@
             </div>
         </section>
 
-        <section id="settingsPage" class="page">
+        <!-- Tab 1: 自瞄 -->
+        <section id="page_aim" class="page">
+            <div id="aimContent" class="stack"></div>
+        </section>
+
+        <!-- Tab 2: 扳机 -->
+        <section id="page_trigger" class="page">
+            <div id="triggerContent" class="stack"></div>
+        </section>
+
+        <!-- Tab 3: 模型 -->
+        <section id="page_model" class="page">
+            <div id="modelContent" class="stack"></div>
+        </section>
+
+        <!-- Tab 4: 系统 -->
+        <section id="page_system" class="page">
+            <div id="systemContent" class="stack"></div>
+        </section>
+
+        <!-- Tab 5: 设置 -->
+        <section id="page_settings" class="page">
             <div class="stack">
                 <div>
                     <h3 class="menu-section-title">配置</h3>
                     <div class="menu-list">
-                        <button class="menu-row" type="button" onclick="invokeNative('exportConfig')">
-                            <span>导出配置</span>
-                            <span class="arrow">›</span>
-                        </button>
-                        <button class="menu-row" type="button" onclick="invokeNative('importConfig')">
-                            <span>导入配置</span>
-                            <span class="arrow">›</span>
-                        </button>
+                        <button class="menu-row" type="button" onclick="invokeNative('exportConfig')"><span>导出配置</span><span class="arrow">›</span></button>
+                        <button class="menu-row" type="button" onclick="invokeNative('importConfig')"><span>导入配置</span><span class="arrow">›</span></button>
                     </div>
                 </div>
-
                 <div>
                     <h3 class="menu-section-title">系统</h3>
                     <div class="menu-list">
-                        <button class="menu-row" type="button" onclick="invokeNative('openPermissionHelp')">
-                            <span>权限说明</span>
-                            <span class="arrow">›</span>
-                        </button>
-                        <button class="menu-row" type="button" onclick="invokeNative('openSettings')">
-                            <span>
-                                高级设置
-                                <span class="menu-sub">CPU 推理设置</span>
-                            </span>
-                            <span class="arrow">›</span>
-                        </button>
+                        <button class="menu-row" type="button" onclick="invokeNative('openPermissionHelp')"><span>权限说明</span><span class="arrow">›</span></button>
+                        <button class="menu-row" type="button" onclick="invokeNative('openSettings')"><span>高级设置<span class="menu-sub">CPU 推理设置</span></span><span class="arrow">›</span></button>
                     </div>
                 </div>
             </div>
@@ -484,53 +228,314 @@
     </main>
 
     <nav class="bottom-nav">
-        <button id="tabHome" class="nav-btn active" type="button" onclick="switchTab('home')">主页</button>
-        <button id="tabSettings" class="nav-btn" type="button" onclick="switchTab('settings')">设置</button>
+        <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">主页</button>
+        <button class="nav-btn" data-tab="aim" onclick="switchTab('aim')">自瞄</button>
+        <button class="nav-btn" data-tab="trigger" onclick="switchTab('trigger')">扳机</button>
+        <button class="nav-btn" data-tab="model" onclick="switchTab('model')">模型</button>
+        <button class="nav-btn" data-tab="system" onclick="switchTab('system')">系统</button>
+        <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">设置</button>
     </nav>
 </div>
 
 <script>
-    const uiState = {
-        tab: "home"
+    const TAB_LABELS = { home:"主页", aim:"自瞄", trigger:"扳机", model:"模型", system:"系统", settings:"设置" };
+    let uiState = { tab:"home" };
+    // Float menu state
+    let fmState = {
+        activeTab:0, modelRunning:false, aimbotEnabled:false, speed:0.015, range:300, confidence:0.5,
+        modelIndex:0, modelNames:[], aimOffsetYRatio:0, aimSwayAmplitude:0, aimPredictionMultiplier:0.7,
+        ki:0, kd:0.008, pidSamplePeriodMs:8, aimMode:0, bezierDuration:30, bezierControlOffset:0.3,
+        bezierRandomSpread:0.1, humanReactionMs:180, humanSpeedFactor:1, humanJitterAmount:2,
+        humanOvershootRatio:0.08, aimHoldEnabled:false, convergeThresh:10,
+        showCaptureRange:false, showDetectionBox:false, showCenterDot:false, showLockRay:false,
+        showDetectionClassIds:[], triggerEnabled:false, triggerReactionSpeed:100, triggerCooldown:200,
+        triggerUpFluctuation:3, triggerDownFluctuation:3, triggerTouchDuration:10, triggerTouchRange:100,
+        triggerOffsetYRatio:0, recordEnabled:false, autoSaveDataset:false, recoilEnabled:false,
+        recoilStrength:0, kalmanPredictEnabled:false, kalmanMaxMissed:5, kalmanProcessNoise:70,
+        kalmanMeasureNoise:110, kalmanBoxSmooth:0.6, kalmanMatchIouThreshold:0.2,
+        targetLostTolerance:2, lockBoxThreshold:0.35, lockCenterWeight:0.3, moveSmooth:0.35,
+        deadzoneHoldFrames:3, edgeReturnStrength:0.25, autoStopEnabled:false,
+        autoTriggerAdsEnabled:false, autoTriggerAdsRange:180, touchOrientationMode:0,
+        boxAimRatio:0.5, priorityClass:-1, hasMultipleClasses:false, classEntries:[],
+        aimTouchDisplay:false, aimTouchSize:20
     };
 
-    function invokeNative(method) {
-        if (window.XunleiAIApp && typeof window.XunleiAIApp[method] === "function") {
-            window.XunleiAIApp[method]();
+    function invokeNative(method, ...args) {
+        const app = window.XunleiAIApp;
+        if (app && typeof app[method] === "function") {
+            app[method](...args);
         }
     }
-
     function setText(id, value) {
         const node = document.getElementById(id);
-        if (node) {
-            node.textContent = value == null || value === "" ? "-" : String(value);
+        if (node) node.textContent = (value == null || value === "") ? "-" : String(value);
+    }
+    function escapeHtml(v) { return String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+    function formatValue(type, value) {
+        const n = Number(value);
+        switch(type) {
+            case "int": return String(Math.round(n));
+            case "ms": return Math.round(n)+"ms";
+            case "px": return Math.round(n)+"px";
+            case "frame": return Math.round(n)+"帧";
+            case "float1": return n.toFixed(1);
+            case "float2": return n.toFixed(2);
+            case "percent": return Math.round(n*100)+"%";
+            default: return String(n);
         }
     }
 
     function switchTab(tab) {
         uiState.tab = tab;
-        const homeActive = tab === "home";
-        document.getElementById("homePage").classList.toggle("active", homeActive);
-        document.getElementById("settingsPage").classList.toggle("active", !homeActive);
-        document.getElementById("tabHome").classList.toggle("active", homeActive);
-        document.getElementById("tabSettings").classList.toggle("active", !homeActive);
-        setText("pageTitle", homeActive ? "迅雷AI" : "设置");
+        document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+        document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+        const page = document.getElementById("page_"+tab);
+        if (page) page.classList.add("active");
+        const btn = document.querySelector(`.nav-btn[data-tab="${tab}"]`);
+        if (btn) btn.classList.add("active");
+        setText("pageTitle", TAB_LABELS[tab] || "迅雷AI");
+        // Re-render float menu content when switching to those tabs
+        if (tab === "aim") renderAimContent();
+        else if (tab === "trigger") renderTriggerContent();
+        else if (tab === "model") renderModelContent();
+        else if (tab === "system") renderSystemContent();
     }
 
+    // === Float Menu Render Functions (adapted from float_menu.html) ===
+    function switchRow(label, key, checked, desc) {
+        return `<div class="setting-row"><div class="setting-main"><div class="setting-title">${escapeHtml(label)}</div>${desc?`<div class="setting-desc">${escapeHtml(desc)}</div>`:""}</div><label class="switch"><input type="checkbox" ${checked?"checked":""} onchange="setBool('${key}',this.checked)"></label></div>`;
+    }
+    function sliderRow(opts) {
+        const vid = "v_"+opts.key+"_"+(opts.extraId||"m").replace(/[^a-z0-9_-]/g,"_");
+        const sid = "s_"+opts.key+"_"+(opts.extraId||"m").replace(/[^a-z0-9_-]/g,"_");
+        const pct = ((opts.value-opts.min)/(opts.max-opts.min)*100)||0;
+        return `<div class="slider-block"><div class="slider-head"><div class="slider-title">${escapeHtml(opts.label)}</div><div class="slider-value" id="${vid}">${formatValue(opts.format,opts.value)}</div></div><div class="custom-slider" id="${sid}" data-key="${opts.key}" data-min="${opts.min}" data-max="${opts.max}" data-step="${opts.step}" data-type="${opts.type}" data-format="${opts.format}" data-value-id="${vid}"><div class="custom-slider-track"><div class="custom-slider-fill" style="width:${pct}%"></div></div><div class="custom-slider-thumb" style="left:${pct}%"></div></div>${opts.note?`<div class="section-note">${escapeHtml(opts.note)}</div>`:""}</div>`;
+    }
+    function customSliderRow(opts) {
+        const vid = "v_"+opts.key+"_"+(opts.extraId||"m").replace(/[^a-z0-9_-]/g,"_");
+        const sid = "s_"+opts.key+"_"+(opts.extraId||"m").replace(/[^a-z0-9_-]/g,"_");
+        const pct = ((opts.value-opts.min)/(opts.max-opts.min)*100)||0;
+        return `<div class="slider-block"><div class="slider-head"><div class="slider-title">${escapeHtml(opts.label)}</div><div class="slider-value" id="${vid}">${formatValue(opts.format,opts.value)}</div></div><div class="custom-slider" id="${sid}" data-key="${opts.key}" data-min="${opts.min}" data-max="${opts.max}" data-step="${opts.step}" data-onchange="${escapeHtml(opts.onchange)}" data-value-id="${vid}"><div class="custom-slider-track"><div class="custom-slider-fill" style="width:${pct}%"></div></div><div class="custom-slider-thumb" style="left:${pct}%"></div></div></div>`;
+    }
+    function segmentedRow(title, key, value, items) {
+        return `<div class="section"><div class="section-title">${escapeHtml(title)}</div><div class="segmented">${items.map(i=>`<button class="seg-btn ${i.value===value?"active":""}" type="button" onclick="setInt('${key}',${i.value})">${escapeHtml(i.label)}</button>`).join("")}</div></div>`;
+    }
+
+    function renderAimClasses() {
+        if (!Array.isArray(fmState.classEntries) || !fmState.classEntries.length) return "";
+        return `<div class="section"><div class="section-title">目标类别</div>${fmState.classEntries.map(c=>`<div class="setting-row"><div class="setting-main"><div class="setting-title">${escapeHtml(c.name)}</div></div><label class="switch"><input type="checkbox" ${c.aimSelected?"checked":""} onchange="setAimClass(${c.id},this.checked)"></label></div>`).join("")}</div>`;
+    }
+    function renderPriorityClasses() {
+        if (!Array.isArray(fmState.classEntries) || !fmState.classEntries.length) return "";
+        const items = [{id:-1,name:"无",prioritySelected:fmState.priorityClass===-1}].concat(fmState.classEntries.map(c=>({id:c.id,name:c.name,prioritySelected:c.prioritySelected})));
+        return `<div class="section"><div class="section-title">优先瞄准</div><div class="chip-list">${items.map(i=>`<button class="chip ${i.prioritySelected?"active":""}" type="button" onclick="setPriorityClass(${i.id})">${escapeHtml(i.name)}</button>`).join("")}</div></div>`;
+    }
+    function renderTriggerClasses() {
+        if (!Array.isArray(fmState.classEntries) || !fmState.classEntries.length) return "";
+        return `<div class="section"><div class="section-title">触发类别</div>${fmState.classEntries.map(c=>`<div class="setting-row"><div class="setting-main"><div class="setting-title">${escapeHtml(c.name)}</div></div><label class="switch"><input type="checkbox" ${c.triggerSelected?"checked":""} onchange="setTriggerClass(${c.id},this.checked)"></label></div>`).join("")}</div>`;
+    }
+
+    function renderAimContent() {
+        const s = fmState;
+        let parts = [];
+        parts.push(`<div class="section">${switchRow("自瞄","aimbotEnabled",s.aimbotEnabled)}${switchRow("按住激发","aimHoldEnabled",s.aimHoldEnabled)}${switchRow("压枪","recoilEnabled",s.recoilEnabled,"仅在按住触发区时持续下压")}${sliderRow({label:"压枪强度",key:"recoilStrength",value:s.recoilStrength,min:0,max:80,step:0.1,type:"float",format:"float1"})}${sliderRow({label:"收敛阈值",key:"convergeThresh",value:s.convergeThresh,min:0,max:100,step:1,type:"int",format:"px",note:"误差小于此值时抬手"})}</div>`);
+        parts.push(segmentedRow("算法模式","aimMode",s.aimMode,[{label:"PID",value:0},{label:"贝塞尔",value:1},{label:"拟人",value:2}]));
+        if (s.aimMode === 0) {
+            parts.push(`<div class="section"><div class="section-title">PID 参数</div>${sliderRow({label:"Kp",key:"speed",value:s.speed,min:0,max:0.05,step:0.001,type:"float",format:"float3"})}${sliderRow({label:"Ki",key:"ki",value:s.ki,min:0,max:0.05,step:0.001,type:"float",format:"float3"})}${sliderRow({label:"Kd",key:"kd",value:s.kd,min:0,max:0.05,step:0.001,type:"float",format:"float3"})}${sliderRow({label:"采样周期",key:"pidSamplePeriodMs",value:s.pidSamplePeriodMs,min:1,max:50,step:1,type:"int",format:"ms"})}</div>`);
+        } else if (s.aimMode === 1) {
+            parts.push(`<div class="section"><div class="section-title">贝塞尔参数</div>${sliderRow({label:"持续时间",key:"bezierDuration",value:s.bezierDuration,min:5,max:100,step:1,type:"int",format:"ms"})}${sliderRow({label:"曲线弯曲",key:"bezierControlOffset",value:s.bezierControlOffset,min:0.05,max:0.5,step:0.01,type:"float",format:"float2"})}${sliderRow({label:"随机幅度",key:"bezierRandomSpread",value:s.bezierRandomSpread,min:0,max:0.5,step:0.01,type:"float",format:"float2"})}</div>`);
+        } else {
+            parts.push(`<div class="section"><div class="section-title">拟人参数</div>${sliderRow({label:"反应时间",key:"humanReactionMs",value:s.humanReactionMs,min:50,max:500,step:10,type:"int",format:"ms",note:"发现目标后延迟启动"})}${sliderRow({label:"移动速度",key:"humanSpeedFactor",value:s.humanSpeedFactor,min:0.3,max:2.5,step:0.1,type:"float",format:"float1",note:"整体瞄准速度倍率"})}${sliderRow({label:"微抖幅度",key:"humanJitterAmount",value:s.humanJitterAmount,min:0,max:20,step:0.5,type:"float",format:"float1",note:"锁定后微小抖动"})}${sliderRow({label:"过冲比例",key:"humanOvershootRatio",value:s.humanOvershootRatio,min:0,max:0.25,step:0.01,type:"float",format:"percent",note:"快速摆枪时略过头"})}</div>`);
+        }
+        if (s.hasMultipleClasses) {
+            parts.push(`<div class="section"><div class="section-title">Y 偏移（各类别）</div>${s.classEntries.map(c=>customSliderRow({label:c.name,key:"aimOffset",extraId:"aim_"+c.id,value:c.aimOffset,min:-1.5,max:1.5,step:0.01,format:"percent",onchange:"setClassAimOffset("+c.id+",this.value)"})).join("")}</div>`);
+            parts.push(`<div class="section"><div class="section-title">框内偏移（各类别）</div>${s.classEntries.map(c=>customSliderRow({label:c.name,key:"boxAimRatio",extraId:"box_"+c.id,value:c.boxAimRatio,min:0,max:1,step:0.01,format:"percent",onchange:"setClassBoxAimRatio("+c.id+",this.value)"})).join("")}</div>`);
+        } else {
+            parts.push(`<div class="section">${sliderRow({label:"Y 偏移",key:"aimOffsetYRatio",value:s.aimOffsetYRatio,min:-1.5,max:1.5,step:0.01,type:"float",format:"percent"})}${sliderRow({label:"框内偏移",key:"boxAimRatio",value:s.boxAimRatio,min:0,max:1,step:0.01,type:"float",format:"percent"})}</div>`);
+        }
+        parts.push(`<div class="section">${sliderRow({label:"摆动幅度",key:"aimSwayAmplitude",value:s.aimSwayAmplitude,min:0,max:2,step:1,type:"int",format:"px"})}${sliderRow({label:"预判倍率",key:"aimPredictionMultiplier",value:s.aimPredictionMultiplier,min:0,max:2,step:0.05,type:"float",format:"float2"})}${switchRow("锁定射线","showLockRay",s.showLockRay)}${sliderRow({label:"丢帧容忍",key:"targetLostTolerance",value:s.targetLostTolerance,min:0,max:10,step:1,type:"int",format:"int"})}${sliderRow({label:"锁框阈值",key:"lockBoxThreshold",value:s.lockBoxThreshold,min:0,max:1,step:0.01,type:"float",format:"float2"})}${sliderRow({label:"中心距离权重",key:"lockCenterWeight",value:s.lockCenterWeight,min:0,max:1,step:0.01,type:"float",format:"float2"})}${sliderRow({label:"移动平滑",key:"moveSmooth",value:s.moveSmooth,min:0,max:0.95,step:0.01,type:"float",format:"float2"})}${sliderRow({label:"死区保持帧",key:"deadzoneHoldFrames",value:s.deadzoneHoldFrames,min:0,max:30,step:1,type:"int",format:"int"})}${sliderRow({label:"边界回中",key:"edgeReturnStrength",value:s.edgeReturnStrength,min:0,max:1,step:0.01,type:"float",format:"float2"})}</div>`);
+        parts.push(renderAimClasses());
+        parts.push(renderPriorityClasses());
+        document.getElementById("aimContent").innerHTML = parts.join("");
+        rebindSliders();
+    }
+
+    function renderTriggerContent() {
+        const s = fmState;
+        let parts = [];
+        parts.push(`<div class="section">${switchRow("自动扳机","triggerEnabled",s.triggerEnabled)}${sliderRow({label:"反应速度",key:"triggerReactionSpeed",value:s.triggerReactionSpeed,min:10,max:500,step:1,type:"int",format:"ms"})}${sliderRow({label:"冷却时间",key:"triggerCooldown",value:s.triggerCooldown,min:10,max:1000,step:1,type:"int",format:"ms"})}${sliderRow({label:"向上波动",key:"triggerUpFluctuation",value:s.triggerUpFluctuation,min:0,max:15,step:1,type:"int",format:"ms"})}${sliderRow({label:"向下波动",key:"triggerDownFluctuation",value:s.triggerDownFluctuation,min:0,max:15,step:1,type:"int",format:"ms"})}${sliderRow({label:"触摸时间",key:"triggerTouchDuration",value:s.triggerTouchDuration,min:1,max:50,step:1,type:"int",format:"ms"})}${switchRow("自动急停","autoStopEnabled",s.autoStopEnabled)}${switchRow("吸附式扳机","autoTriggerAdsEnabled",s.autoTriggerAdsEnabled)}${s.autoTriggerAdsEnabled?sliderRow({label:"吸附检测框距离",key:"autoTriggerAdsRange",value:s.autoTriggerAdsRange,min:20,max:500,step:1,type:"float",format:"int"}):""}${sliderRow({label:"Y 偏移",key:"triggerOffsetYRatio",value:s.triggerOffsetYRatio,min:-2,max:0,step:0.01,type:"float",format:"percent"})}</div>`);
+        if (s.hasMultipleClasses) {
+            parts.push(`<div class="section"><div class="section-title">Y 偏移（各类别）</div>${s.classEntries.map(c=>customSliderRow({label:c.name,key:"triggerOffset",extraId:"trg_"+c.id,value:c.triggerOffset,min:-2,max:0,step:0.01,format:"percent",onchange:"setClassTriggerOffset("+c.id+",this.value)"})).join("")}</div>`);
+        }
+        parts.push(renderTriggerClasses());
+        document.getElementById("triggerContent").innerHTML = parts.join("");
+        rebindSliders();
+    }
+
+    function renderModelContent() {
+        const s = fmState;
+        const modelList = Array.isArray(s.modelNames) && s.modelNames.length > 0
+            ? s.modelNames.map((name,i)=>`<button class="list-button ${s.modelIndex===i?"active":""}" type="button" onclick="selectModel(${i})"><div class="list-title">${escapeHtml(name)}</div><div class="list-desc">${s.modelIndex===i?"当前已选择此模型":"点击切换到该模型"}</div></button>`).join("")
+            : `<div class="empty">无可用模型</div>`;
+        let parts = [];
+        parts.push(`<div class="section"><div class="section-title">模型选择</div>${modelList}</div>`);
+        parts.push(`<div class="section">${sliderRow({label:"检测置信度",key:"confidence",value:s.confidence,min:0.1,max:0.9,step:0.01,type:"float",format:"float2",note:"低于此值的检测结果将被过滤"})}${switchRow("卡尔曼预测","kalmanPredictEnabled",s.kalmanPredictEnabled,"启用后保留 trackId，并在短暂丢框时继续预测")}${s.kalmanPredictEnabled?sliderRow({label:"丢失容忍帧",key:"kalmanMaxMissed",value:s.kalmanMaxMissed,min:0,max:30,step:1,type:"int",format:"frame"}):""}${s.kalmanPredictEnabled?sliderRow({label:"过程噪声",key:"kalmanProcessNoise",value:s.kalmanProcessNoise,min:0,max:500,step:1,type:"float",format:"int"}):""}${s.kalmanPredictEnabled?sliderRow({label:"测量噪声",key:"kalmanMeasureNoise",value:s.kalmanMeasureNoise,min:1,max:500,step:1,type:"float",format:"int"}):""}${s.kalmanPredictEnabled?sliderRow({label:"框平滑",key:"kalmanBoxSmooth",value:s.kalmanBoxSmooth,min:0,max:1,step:0.01,type:"float",format:"float2"}):""}${s.kalmanPredictEnabled?sliderRow({label:"匹配 IoU",key:"kalmanMatchIouThreshold",value:s.kalmanMatchIouThreshold,min:0,max:1,step:0.01,type:"float",format:"float2"}):""}</div>`);
+        document.getElementById("modelContent").innerHTML = parts.join("");
+        rebindSliders();
+    }
+
+    function renderSystemContent() {
+        const s = fmState;
+        let parts = [];
+        parts.push(`<div class="section">${switchRow("显示截取范围","showCaptureRange",s.showCaptureRange)}${sliderRow({label:"截取范围",key:"range",value:s.range,min:50,max:800,step:1,type:"int",format:"px"})}${switchRow("显示检测框","showDetectionBox",s.showDetectionBox)}${Array.isArray(s.classEntries)&&s.classEntries.length>1?`<div style="margin-top:8px"><div class="setting-desc" style="margin-bottom:6px;color:var(--text-sub)">筛选显示 class</div><div class="chip-list">${s.classEntries.map(c=>`<button class="chip${!s.showDetectionClassIds.length||s.showDetectionClassIds.includes(c.id)?" active":""}" onclick="toggleDetectionClass(${c.id})">${escapeHtml(c.name)}</button>`).join("")}</div></div>`:""}${switchRow("显示中心点","showCenterDot",s.showCenterDot)}${switchRow("触摸点显示","aimTouchDisplay",s.aimTouchDisplay)}${s.aimTouchDisplay?sliderRow({label:"触摸点大小",key:"aimTouchSize",value:s.aimTouchSize,min:5,max:50,step:1,type:"int",format:"px"}):""}${switchRow("录屏","recordEnabled",s.recordEnabled,"H265 编码，60 帧，保存到 Pictures/Screenshots")}${switchRow("自动保存数据集","autoSaveDataset",s.autoSaveDataset,"检测到目标时自动截图+YOLO标注")}</div>`);
+        parts.push(`<div class="section"><button class="action-row" type="button" onclick="runAction('testCircle')"><div class="setting-main"><div class="setting-title">输入测试</div><div class="setting-desc">在屏幕中心画一个圆</div></div><div class="action-arrow">›</div></button><button class="action-row" type="button" onclick="runAction('openAreaSettings')"><div class="setting-main"><div class="setting-title">区域设置</div><div class="setting-desc">配置开火/触发/瞄准/开镜区域</div></div><div class="action-arrow">›</div></button></div>`);
+        parts.push(segmentedRow("充电口朝向","touchOrientationMode",s.touchOrientationMode,[{label:"自动",value:0},{label:"右侧",value:1},{label:"左侧",value:2}]));
+        document.getElementById("systemContent").innerHTML = parts.join("");
+        rebindSliders();
+    }
+
+    // === Slider interaction ===
+    let activeSlider = null;
+    function rebindSliders() {}
+    document.addEventListener('touchstart', function(e) {
+        const target = e.touches[0].target;
+        if (!target.classList || !target.classList.contains('custom-slider-thumb')) return;
+        const slider = target.closest('.custom-slider');
+        if (!slider) return;
+        activeSlider = { slider:slider, type:'touch' };
+        target.classList.add('dragging');
+        e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchmove', function(e) {
+        if (!activeSlider || activeSlider.type !== 'touch') return;
+        const touch = e.touches[0];
+        const rect = activeSlider.slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((touch.clientX - rect.left) / rect.width) * 100));
+        updateSlider(activeSlider.slider, pct);
+        e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchend', function(e) {
+        if (!activeSlider || activeSlider.type !== 'touch') return;
+        const thumb = activeSlider.slider.querySelector('.custom-slider-thumb');
+        if (thumb) thumb.classList.remove('dragging');
+        commitSliderChange(activeSlider.slider);
+        activeSlider = null;
+        e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('mousedown', function(e) {
+        const target = e.target;
+        if (!target.classList || !target.classList.contains('custom-slider-thumb')) return;
+        const slider = target.closest('.custom-slider');
+        if (!slider) return;
+        activeSlider = { slider:slider, type:'mouse' };
+        target.classList.add('dragging');
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!activeSlider || activeSlider.type !== 'mouse') return;
+        const rect = activeSlider.slider.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+        updateSlider(activeSlider.slider, pct);
+        e.preventDefault();
+    });
+    document.addEventListener('mouseup', function(e) {
+        if (!activeSlider || activeSlider.type !== 'mouse') return;
+        const thumb = activeSlider.slider.querySelector('.custom-slider-thumb');
+        if (thumb) thumb.classList.remove('dragging');
+        commitSliderChange(activeSlider.slider);
+        activeSlider = null;
+        e.preventDefault();
+    });
+
+    function updateSlider(slider, percent) {
+        const min = parseFloat(slider.dataset.min);
+        const max = parseFloat(slider.dataset.max);
+        const step = parseFloat(slider.dataset.step);
+        const format = slider.dataset.format;
+        const valueId = slider.dataset.valueId;
+        const key = slider.dataset.key;
+        let value = min + (percent / 100) * (max - min);
+        if (step > 0) { const steps = Math.round((value - min) / step); value = min + steps * step; value = Math.max(min, Math.min(max, value)); }
+        const snappedPct = ((value - min) / (max - min)) * 100;
+        const fill = slider.querySelector('.custom-slider-fill');
+        const thumb = slider.querySelector('.custom-slider-thumb');
+        if (fill) fill.style.width = snappedPct + '%';
+        if (thumb) thumb.style.left = snappedPct + '%';
+        const vt = document.getElementById(valueId);
+        if (vt) vt.textContent = formatValue(format, value);
+        fmState[key] = value;
+    }
+    function commitSliderChange(slider) {
+        if (!slider) return;
+        const key = slider.dataset.key;
+        const type = slider.dataset.type;
+        const value = fmState[key];
+        if (slider.dataset.onchange) {
+            const code = slider.dataset.onchange.replace(/this\.value/g, value);
+            try { eval(code); } catch(e) { console.error('slider onchange error', e); }
+        } else if (type === 'int') { setInt(key, value); }
+        else { setFloat(key, value); }
+    }
+
+    // === Bridge functions ===
+    function setBool(key, value) {
+        fmState[key] = value;
+        if (key === "autoTriggerAdsEnabled" || key === "kalmanPredictEnabled") {
+            const tab = uiState.tab;
+            if (tab === "trigger") renderTriggerContent();
+            else if (tab === "model") renderModelContent();
+        }
+        invokeNative('setBool', key, value);
+    }
+    function setInt(key, value) {
+        fmState[key] = parseInt(value, 10);
+        if (key === "touchOrientationMode" && uiState.tab === "system") renderSystemContent();
+        invokeNative('setInt', key, parseInt(value, 10));
+    }
+    function setFloat(key, value) {
+        fmState[key] = value;
+        invokeNative('setFloat', key, parseFloat(value));
+    }
+
+    function selectModel(index) {
+        fmState.modelIndex = index;
+        if (uiState.tab === "model") renderModelContent();
+        invokeNative('selectModel', index);
+    }
+    function setAimClass(id, enabled) { invokeNative('setAimClass', id, enabled); }
+    function setTriggerClass(id, enabled) { invokeNative('setTriggerClass', id, enabled); }
+    function toggleDetectionClass(id) {
+        let ids = fmState.showDetectionClassIds;
+        const idx = ids.indexOf(id);
+        if (idx >= 0) { if (ids.length <= 1) return; ids = ids.filter(x => x !== id); }
+        else { ids = [...ids, id]; }
+        fmState.showDetectionClassIds = ids;
+        if (uiState.tab === "system") renderSystemContent();
+        invokeNative('setShowDetectionClass', id, idx >= 0 ? false : true);
+    }
+    function setPriorityClass(id) {
+        fmState.priorityClass = id;
+        if (Array.isArray(fmState.classEntries)) {
+            fmState.classEntries = fmState.classEntries.map(c => ({...c, prioritySelected: c.id === id}));
+        }
+        if (uiState.tab === "aim") renderAimContent();
+        invokeNative('setPriorityClass', id);
+    }
+    function setClassAimOffset(id, value) { invokeNative('setClassAimOffset', id, parseFloat(value)); }
+    function setClassBoxAimRatio(id, value) { invokeNative('setClassBoxAimRatio', id, parseFloat(value)); }
+    function setClassTriggerOffset(id, value) { invokeNative('setClassTriggerOffset', id, parseFloat(value)); }
+    function runAction(action) { invokeNative('runAction', action); }
+
+    // === State sync from native ===
     window.XunleiAIUi = {
         render(raw) {
             const data = JSON.parse(raw);
             setText("statusText", data.statusText);
             setText("statusMeta", "版本 " + data.versionName + " · " + data.privilegeValue);
-            setText("appVersionText", "当前版本 " + data.versionName);
             setText("backendBadge", data.backend);
             setText("privilegeValue", data.privilegeValue);
             setText("overlayValue", data.overlayValue);
             setText("touchValue", data.touchValue);
-            setText("androidVersion", data.androidVersion);
-            setText("deviceName", data.deviceName);
-            setText("projectIntro", data.projectIntro);
-
             const model = data.model || {};
             setText("modelName", model.displayName || "暂无模型");
             setText("modelPrecision", model.precision || "-");
@@ -538,16 +543,22 @@
             setText("modelOutput", model.outputSize || "-");
             setText("modelDescription", model.description || "-");
             setText("modelClasses", model.classesSummary || "-");
-
-            const toggleButton = document.getElementById("toggleButton");
-            toggleButton.textContent = data.running ? "停止" : "启动";
-
-            const dot = document.getElementById("statusDot");
-            dot.classList.toggle("running", !!data.running);
+            const tb = document.getElementById("toggleButton");
+            tb.textContent = data.running ? "停止" : "启动";
+            document.getElementById("statusDot").classList.toggle("running", !!data.running);
+        },
+        renderFloatState(raw) {
+            const data = JSON.parse(raw);
+            Object.assign(fmState, data);
+            const tab = uiState.tab;
+            if (tab === "aim") renderAimContent();
+            else if (tab === "trigger") renderTriggerContent();
+            else if (tab === "model") renderModelContent();
+            else if (tab === "system") renderSystemContent();
         }
     };
 
-    document.addEventListener("DOMContentLoaded", function () {
+    document.addEventListener("DOMContentLoaded", function() {
         if (window.XunleiAIApp && typeof window.XunleiAIApp.onPageReady === "function") {
             window.XunleiAIApp.onPageReady();
         }

@@ -9,7 +9,6 @@ import android.view.WindowManager
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import com.xunlei.ai.view.TouchDisplayView
 import com.xunlei.ai.view.AreaSettingsView
-import com.xunlei.ai.view.GuiPanelView
 import com.xunlei.ai.model.AreaConfig
 import com.xunlei.ai.util.ProjectionHolder
 
@@ -36,9 +35,9 @@ class OverlayManager(
     var onAreaSettingsConfirm: ((List<AreaConfig>) -> Unit)? = null
     var onAreaSettingsCancel: (() -> Unit)? = null
 
-    fun setupTouchDisplayView(guiPanel: GuiPanelView) {
+    fun setupTouchDisplayView(aimTouchSize: Int = 20) {
         if (touchDisplayAdded) return
-        val size = dp(guiPanel.aimTouchSize) * 2
+        val size = dp(aimTouchSize) * 2
         touchDisplayView = TouchDisplayView(context)
         ProjectionHolder.touchDisplayView = touchDisplayView
         val p = WindowManager.LayoutParams(
@@ -51,7 +50,7 @@ class OverlayManager(
         p.gravity = Gravity.TOP or Gravity.START
         p.x = screenWidth() / 2 - size / 2
         p.y = screenHeight() / 2 - size / 2
-        touchDisplayView!!.dotRadius = dp(guiPanel.aimTouchSize).toFloat()
+        touchDisplayView!!.dotRadius = dp(aimTouchSize).toFloat()
         wm.addView(touchDisplayView, p)
         touchDisplayAdded = true
         touchDisplayView!!.alpha = 0f
