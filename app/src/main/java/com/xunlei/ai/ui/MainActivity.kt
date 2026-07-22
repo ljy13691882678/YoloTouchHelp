@@ -1258,7 +1258,6 @@ class MainActivity : AppCompatActivity() {
                         "aimSwayAmplitude" -> aimSwayAmplitude = value
                         "aimMode" -> aimMode = value
                         "bezierDuration" -> bezierDuration = value
-                        "humanReactionMs" -> humanReactionMs = value
                         "kalmanMaxMissed" -> kalmanMaxMissed = value
                         "convergeThresh" -> convergeThresh = value
                         "targetLostTolerance" -> targetLostTolerance = value
@@ -1284,9 +1283,6 @@ class MainActivity : AppCompatActivity() {
                         "kd" -> kd = value
                         "bezierControlOffset" -> bezierControlOffset = value
                         "bezierRandomSpread" -> bezierRandomSpread = value
-                        "humanSpeedFactor" -> humanSpeedFactor = value
-                        "humanJitterAmount" -> humanJitterAmount = value
-                        "humanOvershootRatio" -> humanOvershootRatio = value
                         "aimOffsetYRatio" -> aimOffsetYRatio = value
                         "aimPredictionMultiplier" -> aimPredictionMultiplier = value
                         "boxAimRatio" -> boxAimRatio = value
