@@ -35,6 +35,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Uses default auto-generated debug signing config
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
