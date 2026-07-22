@@ -541,6 +541,13 @@ private var triggerOverlay: TriggerOverlayView? = null
             mainHandler.post { showAreaSettings() }
             return START_STICKY
         }
+        if (intent?.action == "ACTION_AREA_IMAGE") {
+            val imagePath = intent.getStringExtra("areaImagePath")
+            if (imagePath != null) {
+                mainHandler.post { showAreaSettingsWithImage(imagePath) }
+            }
+            return START_STICKY
+        }
         if (intent?.action == ACTION_SET_PARAM) {
             handleParamChange(intent)
             return START_STICKY
@@ -890,6 +897,26 @@ private var triggerOverlay: TriggerOverlayView? = null
                 setAreas(this@FloatService.savedAreas)
                 open()
             }
+        }
+    }
+
+    private fun showAreaSettingsWithImage(imagePath: String) {
+        try {
+            val opts = BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+                inSampleSize = 1
+            }
+            val bitmap = BitmapFactory.decodeFile(imagePath, opts)
+            if (areaSettingsView == null) setupAreaSettingsView()
+            if (areaSettingsAdded && bitmap != null) {
+                areaSettingsView?.setBackgroundBitmap(bitmap)
+                areaSettingsView?.apply {
+                    setAreas(this@FloatService.savedAreas)
+                    open()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load area image: ${e.message}")
         }
     }
 

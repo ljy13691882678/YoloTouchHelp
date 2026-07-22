@@ -1402,6 +1402,41 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+
+        @JavascriptInterface
+        fun pickAreaImage() {
+            runOnUiThread {
+                try {
+                    areaImageLauncher.launch("image/*")
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    private val areaImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                // Copy image to internal storage so FloatService can read it
+                val input = contentResolver.openInputStream(uri)
+                val areaDir = java.io.File(filesDir, "area_images")
+                areaDir.mkdirs()
+                val targetFile = java.io.File(areaDir, "area_bg.png")
+                if (input != null) {
+                    java.io.FileOutputStream(targetFile).use { output -> input.copyTo(output) }
+                    input.close()
+                }
+                // Send file path to FloatService
+                val intent = Intent(this@MainActivity, FloatService::class.java).apply {
+                    action = "ACTION_AREA_IMAGE"
+                    putExtra("areaImagePath", targetFile.absolutePath)
+                }
+                try { startService(intent) } catch (_: Exception) {}
+            } catch (e: Exception) {
+                android.util.Log.e("XunleiAI_AI", "Failed to copy area image", e)
+            }
+        }
     }
 
     private fun sendParamToService(key: String, value: String) {
