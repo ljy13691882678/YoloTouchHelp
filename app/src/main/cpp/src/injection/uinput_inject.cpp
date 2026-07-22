@@ -122,7 +122,8 @@ Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerDown(
     JNIEnv*, jobject, jint x, jint y)
 {
     if (!touch_is_initialized()) return;
-    touch_down(touch_get_trigger_slot(), touch_get_trigger_id(), x, y);
+    // [FIX] 单触点模式：trigger 复用 virtual slot
+    touch_down(touch_get_virtual_slot(), touch_get_virtual_id(), x, y);
 }
 
 JNIEXPORT void JNICALL
@@ -130,7 +131,8 @@ Java_com_xunlei_ai_service_RemoteInjectorService_uinputTriggerUp(
     JNIEnv*, jobject)
 {
     if (!touch_is_initialized()) return;
-    touch_up(touch_get_trigger_slot());
+    // [FIX] 单触点模式：trigger 复用 virtual slot
+    touch_up(touch_get_virtual_slot());
 }
 
 // ─── Zone configuration ────────────────────────────────────────────

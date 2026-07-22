@@ -171,14 +171,16 @@ static void handle_command(const char* cmd) {
     else if (strncmp(buf, "TRIGGER_DOWN ", 13) == 0) {
         int x, y;
         if (parseTwoInts(buf + 13, &x, &y)) {
-            touch_down(touch_get_trigger_slot(), touch_get_trigger_id(), x, y);
+            // [FIX] 单触点模式：trigger 复用 virtual slot，全程只有一个虚拟手指
+            touch_down(touch_get_virtual_slot(), touch_get_virtual_id(), x, y);
             puts("OK");
         } else {
             puts("ERR:invalid args");
         }
     }
     else if (strcmp(buf, "TRIGGER_UP") == 0) {
-        touch_up(touch_get_trigger_slot());
+        // [FIX] 单触点模式：trigger 复用 virtual slot
+        touch_up(touch_get_virtual_slot());
         puts("OK");
     }
     else if (strncmp(buf, "SET_TRIGGER_ZONE ", 17) == 0) {

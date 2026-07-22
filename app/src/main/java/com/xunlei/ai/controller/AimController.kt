@@ -124,7 +124,12 @@ class AimController(
             } else {
                 // 目标消失 — 计数确认
                 aimingState.committedMissingFrames++
-                val killFrames = aimingState.commitKillConfirmFrames.coerceIn(3, 60)
+                // [FIX] 自适应击杀确认帧数：刚锁定就消失→快速切换(误检)；锁定很久→延长确认(真击杀)
+                val killFrames = when {
+                    aimingState.commitFrameCount < 8 -> 5
+                    aimingState.commitFrameCount < 25 -> 10
+                    else -> 16
+                }.coerceIn(3, 60)
                 if (aimingState.committedMissingFrames > killFrames) {
                     Log.d(TAG, "commit: target missing ${aimingState.committedMissingFrames} frames, confirmed killed, switching to next")
                     clearCommitment()
@@ -452,9 +457,15 @@ class AimController(
             var moveY = errorY * t
             moveY += currentRecoilOffset()
             if (aimSwayAmplitude > 0) moveY += computeSway()
-            val smooth = moveSmooth.coerceIn(0f, 0.95f)
-            moveX = aimingState.lastMoveX * smooth + moveX * (1f - smooth)
-            moveY = aimingState.lastMoveY * smooth + moveY * (1f - smooth)
+            // [FIX] 自适应 moveSmooth：远距离响应更快，近距离更平滑稳定
+            val errorDist = Math.sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
+            val adaptiveSmooth = when {
+                errorDist > 150f -> moveSmooth * 0.55f
+                errorDist > 60f -> moveSmooth * 0.80f
+                else -> moveSmooth * 1.15f
+            }.coerceIn(0.05f, 0.92f)
+            moveX = aimingState.lastMoveX * adaptiveSmooth + moveX * (1f - adaptiveSmooth)
+            moveY = aimingState.lastMoveY * adaptiveSmooth + moveY * (1f - adaptiveSmooth)
             aimingState.lastMoveX = moveX
             aimingState.lastMoveY = moveY
             aimingState.centerX += moveX
@@ -511,9 +522,15 @@ class AimController(
             var moveY = errorY * kp + aimingState.integralY * ki + derivY * kd
             moveY += currentRecoilOffset()
             if (aimSwayAmplitude > 0) moveY += computeSway()
-            val smooth = moveSmooth.coerceIn(0f, 0.95f)
-            moveX = aimingState.lastMoveX * smooth + moveX * (1f - smooth)
-            moveY = aimingState.lastMoveY * smooth + moveY * (1f - smooth)
+            // [FIX] 自适应 moveSmooth：远距离响应更快，近距离更平滑稳定
+            val errorDist = Math.sqrt((errorX * errorX + errorY * errorY).toDouble()).toFloat()
+            val adaptiveSmooth = when {
+                errorDist > 150f -> moveSmooth * 0.55f
+                errorDist > 60f -> moveSmooth * 0.80f
+                else -> moveSmooth * 1.15f
+            }.coerceIn(0.05f, 0.92f)
+            moveX = aimingState.lastMoveX * adaptiveSmooth + moveX * (1f - adaptiveSmooth)
+            moveY = aimingState.lastMoveY * adaptiveSmooth + moveY * (1f - adaptiveSmooth)
             aimingState.lastMoveX = moveX
             aimingState.lastMoveY = moveY
             aimingState.prevErrorX = errorX
