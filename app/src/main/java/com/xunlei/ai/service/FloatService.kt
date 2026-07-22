@@ -441,68 +441,66 @@ private var triggerOverlay: TriggerOverlayView? = null
                     "kalmanMatchIouThreshold" -> { kalmanMatchIouThreshold = valueStr.toFloat(); applyKalmanConfig(); ConfigManager.updateConfig { kalmanMatchIouThreshold = kalmanMatchIouThreshold } }
                     "aimPredictionMultiplier" -> { aimPredictionMultiplier = valueStr.toFloat(); aimController.aimPredictionMultiplier = aimPredictionMultiplier; ConfigManager.updateConfig { aimPredictionMultiplier = aimPredictionMultiplier } }
                     "boxAimRatio" -> { boxAimRatio = valueStr.toFloat(); aimController.boxAimRatio = boxAimRatio; ConfigManager.updateConfig { boxAimRatio = boxAimRatio } }
-                    // Class-related parameters sent from main UI
-                    key.startsWith("aimClass_") -> {
-                        val classId = key.removePrefix("aimClass_").toIntOrNull() ?: return@post
-                        val enabled = valueStr == "1"
-                        val allIds = currentClasses.keys.sorted()
-                        if (allIds.size <= 1) return@post
-                        if (aimClasses.isEmpty()) aimClasses = allIds.toMutableSet()
-                        if (enabled) aimClasses.add(classId) else {
-                            if (aimClasses.size > 1) aimClasses.remove(classId)
-                        }
-                        aimController.aimClasses = aimClasses.toMutableSet()
-                        ConfigManager.updateConfig { aimClasses = this@FloatService.aimClasses }
-                    }
-                    key.startsWith("triggerClass_") -> {
-                        val classId = key.removePrefix("triggerClass_").toIntOrNull() ?: return@post
-                        val enabled = valueStr == "1"
-                        val allIds = currentClasses.keys.sorted()
-                        if (allIds.size <= 1) return@post
-                        if (triggerClasses.isEmpty()) triggerClasses = allIds.toMutableSet()
-                        if (enabled) triggerClasses.add(classId) else {
-                            if (triggerClasses.size > 1) triggerClasses.remove(classId)
-                        }
-                        triggerController.triggerClasses = triggerClasses.toMutableSet()
-                        ConfigManager.updateConfig { triggerClasses = this@FloatService.triggerClasses }
-                    }
-                    key.startsWith("showDetectionClass_") -> {
-                        val classId = key.removePrefix("showDetectionClass_").toIntOrNull() ?: return@post
-                        val enabled = valueStr == "1"
-                        val allIds = currentClasses.keys.sorted()
-                        if (showDetectionClassIds.isEmpty()) showDetectionClassIds = allIds.toMutableSet()
-                        if (enabled) showDetectionClassIds.add(classId) else {
-                            if (showDetectionClassIds.size > 1) showDetectionClassIds.remove(classId)
-                        }
-                        overlayView.enabledClassIds = showDetectionClassIds.toSet()
-                        overlayView.postInvalidate()
-                        ConfigManager.updateConfig { showDetectionClassIds = this@FloatService.showDetectionClassIds }
-                    }
                     "priorityClass" -> {
                         priorityClass = valueStr.toIntOrNull() ?: -1
                         aimController.priorityClass = priorityClass
                         ConfigManager.updateConfig { priorityClass = this@FloatService.priorityClass }
                     }
-                    key.startsWith("classAimOffset_") -> {
-                        val classId = key.removePrefix("classAimOffset_").toIntOrNull() ?: return@post
-                        val value = valueStr.toFloatOrNull() ?: return@post
-                        classAimOffsets = classAimOffsets.toMutableMap().apply { put(classId, value) }
-                        aimController.classAimOffsets = classAimOffsets
-                        ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets }
-                    }
-                    key.startsWith("classBoxAimRatio_") -> {
-                        val classId = key.removePrefix("classBoxAimRatio_").toIntOrNull() ?: return@post
-                        val value = valueStr.toFloatOrNull() ?: return@post
-                        classBoxAimRatios = classBoxAimRatios.toMutableMap().apply { put(classId, value) }
-                        aimController.classBoxAimRatios = classBoxAimRatios
-                        ConfigManager.updateConfig { classBoxAimRatios = this@FloatService.classBoxAimRatios }
-                    }
-                    key.startsWith("classTriggerOffset_") -> {
-                        val classId = key.removePrefix("classTriggerOffset_").toIntOrNull() ?: return@post
-                        val value = valueStr.toFloatOrNull() ?: return@post
-                        classTriggerOffsets = classTriggerOffsets.toMutableMap().apply { put(classId, value) }
-                        triggerController.classTriggerOffsets = classTriggerOffsets
-                        ConfigManager.updateConfig { classTriggerOffsets = this@FloatService.classTriggerOffsets }
+                    else -> {
+                        // Class-related parameters (prefixed keys)
+                        when {
+                            key.startsWith("aimClass_") -> {
+                                val classId = key.removePrefix("aimClass_").toIntOrNull() ?: return@post
+                                val enabled = valueStr == "1"
+                                val allIds = currentClasses.keys.sorted()
+                                if (allIds.size <= 1) return@post
+                                if (aimClasses.isEmpty()) aimClasses = allIds.toMutableSet()
+                                if (enabled) aimClasses.add(classId) else { if (aimClasses.size > 1) aimClasses.remove(classId) }
+                                aimController.aimClasses = aimClasses.toMutableSet()
+                                ConfigManager.updateConfig { aimClasses = this@FloatService.aimClasses }
+                            }
+                            key.startsWith("triggerClass_") -> {
+                                val classId = key.removePrefix("triggerClass_").toIntOrNull() ?: return@post
+                                val enabled = valueStr == "1"
+                                val allIds = currentClasses.keys.sorted()
+                                if (allIds.size <= 1) return@post
+                                if (triggerClasses.isEmpty()) triggerClasses = allIds.toMutableSet()
+                                if (enabled) triggerClasses.add(classId) else { if (triggerClasses.size > 1) triggerClasses.remove(classId) }
+                                triggerController.triggerClasses = triggerClasses.toMutableSet()
+                                ConfigManager.updateConfig { triggerClasses = this@FloatService.triggerClasses }
+                            }
+                            key.startsWith("showDetectionClass_") -> {
+                                val classId = key.removePrefix("showDetectionClass_").toIntOrNull() ?: return@post
+                                val enabled = valueStr == "1"
+                                val allIds = currentClasses.keys.sorted()
+                                if (showDetectionClassIds.isEmpty()) showDetectionClassIds = allIds.toMutableSet()
+                                if (enabled) showDetectionClassIds.add(classId) else { if (showDetectionClassIds.size > 1) showDetectionClassIds.remove(classId) }
+                                overlayView.enabledClassIds = showDetectionClassIds.toSet()
+                                overlayView.postInvalidate()
+                                ConfigManager.updateConfig { showDetectionClassIds = this@FloatService.showDetectionClassIds }
+                            }
+                            key.startsWith("classAimOffset_") -> {
+                                val classId = key.removePrefix("classAimOffset_").toIntOrNull() ?: return@post
+                                val value = valueStr.toFloatOrNull() ?: return@post
+                                classAimOffsets = classAimOffsets.toMutableMap().apply { put(classId, value) }
+                                aimController.classAimOffsets = classAimOffsets
+                                ConfigManager.updateConfig { classAimOffsets = this@FloatService.classAimOffsets }
+                            }
+                            key.startsWith("classBoxAimRatio_") -> {
+                                val classId = key.removePrefix("classBoxAimRatio_").toIntOrNull() ?: return@post
+                                val value = valueStr.toFloatOrNull() ?: return@post
+                                classBoxAimRatios = classBoxAimRatios.toMutableMap().apply { put(classId, value) }
+                                aimController.classBoxAimRatios = classBoxAimRatios
+                                ConfigManager.updateConfig { classBoxAimRatios = this@FloatService.classBoxAimRatios }
+                            }
+                            key.startsWith("classTriggerOffset_") -> {
+                                val classId = key.removePrefix("classTriggerOffset_").toIntOrNull() ?: return@post
+                                val value = valueStr.toFloatOrNull() ?: return@post
+                                classTriggerOffsets = classTriggerOffsets.toMutableMap().apply { put(classId, value) }
+                                triggerController.classTriggerOffsets = classTriggerOffsets
+                                ConfigManager.updateConfig { classTriggerOffsets = this@FloatService.classTriggerOffsets }
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
