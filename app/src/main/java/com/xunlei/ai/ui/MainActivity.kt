@@ -385,14 +385,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                data = Uri.parse("package:$packageName")
-            }
-            startActivity(intent)
-            Toast.makeText(this, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
-            return
-        }
         if (!isInjectorAvailable()) {
             showPermissionHelpDialog()
             return
@@ -402,9 +394,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissionsOnStart() {
-        if (!Settings.canDrawOverlays(this) || !isInjectorAvailable()) {
-            showPermissionHelpDialog()
-        }
+        // Permission check disabled - only check on start button click
     }
 
     private fun updatePermissionStates() {
