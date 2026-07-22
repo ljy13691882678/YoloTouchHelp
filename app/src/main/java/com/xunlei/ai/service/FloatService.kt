@@ -425,10 +425,6 @@ private var triggerOverlay: TriggerOverlayView? = null
                     "bezierDuration" -> { bezierDuration = valueStr.toInt(); aimController.bezierDuration = bezierDuration; ConfigManager.updateConfig { bezierDuration = bezierDuration } }
                     "bezierControlOffset" -> { bezierControlOffset = valueStr.toFloat(); aimController.bezierControlOffset = bezierControlOffset; ConfigManager.updateConfig { bezierControlOffset = bezierControlOffset } }
                     "bezierRandomSpread" -> { bezierRandomSpread = valueStr.toFloat(); aimController.bezierRandomSpread = bezierRandomSpread; ConfigManager.updateConfig { bezierRandomSpread = bezierRandomSpread } }
-                    "humanReactionMs" -> { humanReactionMs = valueStr.toInt(); aimController.humanReactionMs = humanReactionMs; ConfigManager.updateConfig { humanReactionMs = humanReactionMs } }
-                    "humanSpeedFactor" -> { humanSpeedFactor = valueStr.toFloat(); aimController.humanSpeedFactor = humanSpeedFactor; ConfigManager.updateConfig { humanSpeedFactor = humanSpeedFactor } }
-                    "humanJitterAmount" -> { humanJitterAmount = valueStr.toFloat(); aimController.humanJitterAmount = humanJitterAmount; ConfigManager.updateConfig { humanJitterAmount = humanJitterAmount } }
-                    "humanOvershootRatio" -> { humanOvershootRatio = valueStr.toFloat(); aimController.humanOvershootRatio = humanOvershootRatio; ConfigManager.updateConfig { humanOvershootRatio = humanOvershootRatio } }
                     "convergeThresh" -> { convergeThresh = valueStr.toFloat(); aimController.convergeThresh = convergeThresh; ConfigManager.updateConfig { convergeThresh = valueStr.toInt() } }
                     "targetLostTolerance" -> { targetLostTolerance = valueStr.toInt(); aimController.targetLostTolerance = targetLostTolerance; ConfigManager.updateConfig { targetLostTolerance = targetLostTolerance } }
                     "lockBoxThreshold" -> { lockBoxThreshold = valueStr.toFloat(); aimController.lockBoxThreshold = lockBoxThreshold; ConfigManager.updateConfig { lockBoxThreshold = lockBoxThreshold } }
