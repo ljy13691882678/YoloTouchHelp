@@ -17,6 +17,15 @@ class AreaSettingsView(context: Context) : View(context) {
     var state: State = State.CLOSED
         private set
 
+    // Background screenshot bitmap
+    private var backgroundBitmap: Bitmap? = null
+    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    fun setBackgroundBitmap(bitmap: Bitmap?) {
+        backgroundBitmap = bitmap
+        invalidate()
+    }
+
     private val areas = mutableListOf<AreaConfig>().apply {
         add(AreaConfig(name = "开火区", color = Color.WHITE))
         add(AreaConfig(name = "触发区", color = Color.parseColor("#FF1976D2")))
@@ -235,9 +244,23 @@ class AreaSettingsView(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
 
-        val layerId = canvas.saveLayer(0f, 0f, w, h, null)
-        canvas.drawColor(Color.parseColor("#AA000000"))
+        // Draw background screenshot first (fit to screen)
+        if (backgroundBitmap != null && !backgroundBitmap!!.isRecycled) {
+            val srcRect = Rect(0, 0, backgroundBitmap!!.width, backgroundBitmap!!.height)
+            val dstRect = Rect(0, 0, width, height)
+            canvas.drawBitmap(backgroundBitmap!!, srcRect, dstRect, bgPaint)
+        } else {
+            canvas.drawColor(Color.parseColor("#AA000000"))
+        }
 
+        // Dim overlay except area regions
+        val layerId = canvas.saveLayer(0f, 0f, w, h, null)
+        if (backgroundBitmap != null) {
+            // Semi-transparent overlay on top of background
+            canvas.drawColor(Color.parseColor("#88000000"))
+        } else {
+            canvas.drawColor(Color.parseColor("#AA000000"))
+        }
         for (area in areas) {
             canvas.drawRoundRect(area.toRectF(), cornerRadius, cornerRadius, clearPaint)
         }

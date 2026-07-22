@@ -862,7 +862,30 @@ private var triggerOverlay: TriggerOverlayView? = null
     private fun showAreaSettings() {
         if (areaSettingsView == null) setupAreaSettingsView()
         if (areaSettingsAdded) {
-            // GUI panel removed
+            // Capture screenshot from ImageReader for background
+            try {
+                val image = imageReader?.acquireLatestImage()
+                if (image != null) {
+                    val planes = image.planes
+                    if (planes.isNotEmpty()) {
+                        val buffer = planes[0].buffer
+                        val pixelStride = planes[0].pixelStride
+                        val rowStride = planes[0].rowStride
+                        val rowPadding = rowStride - pixelStride * image.width
+                        val bitmap = Bitmap.createBitmap(
+                            image.width + rowPadding / pixelStride,
+                            image.height, Bitmap.Config.ARGB_8888
+                        )
+                        buffer.position(0)
+                        bitmap.copyPixelsFromBuffer(buffer)
+                        val cropped = Bitmap.createBitmap(bitmap, 0, 0,
+                            image.width, image.height)
+                        areaSettingsView?.setBackgroundBitmap(cropped)
+                        if (bitmap !== cropped) bitmap.recycle()
+                    }
+                    image.close()
+                }
+            } catch (_: Exception) {}
             areaSettingsView?.apply {
                 setAreas(this@FloatService.savedAreas)
                 open()
