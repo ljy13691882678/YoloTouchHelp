@@ -78,6 +78,7 @@ class FloatService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
     private val inferRunning = AtomicBoolean(false)
     val aimbotOn = AtomicBoolean(false)
+    var isServiceReady = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val detectionBuffer = Array(20) { DetectionInfo(RectF(), -1, "") }
@@ -381,6 +382,7 @@ private var triggerOverlay: TriggerOverlayView? = null
     private fun handleParamChange(intent: Intent) {
         val key = intent.getStringExtra(EXTRA_KEY) ?: return
         val valueStr = intent.getStringExtra(EXTRA_VALUE) ?: return
+        if (!isServiceReady) return
         mainHandler.post {
             try {
                 when (key) {
@@ -403,9 +405,13 @@ private var triggerOverlay: TriggerOverlayView? = null
                     "aimHoldEnabled" -> { aimHoldEnabled = valueStr.toBoolean(); aimController.aimHoldEnabled = aimHoldEnabled; ConfigManager.updateConfig { aimHoldEnabled = aimHoldEnabled } }
                     "kalmanPredictEnabled" -> { kalmanPredictEnabled = valueStr.toBoolean(); if (!kalmanPredictEnabled) kalmanTracker.reset(); ConfigManager.updateConfig { kalmanPredictEnabled = kalmanPredictEnabled } }
                     "modelRunning" -> {
-                        modelRunning = valueStr.toBoolean()
+                        val newState = if (valueStr == "toggle") !modelRunning else valueStr.toBoolean()
+                        modelRunning = newState
                         if (modelRunning && !inferRunning.get()) startInferLoop()
                         else if (!modelRunning) { if (!recordEnabled) { inferRunning.set(false); broadcastState(1) } }
+                        // Broadcast state change so MainActivity can update UI
+                        broadcastState(if (modelRunning && inferRunning.get()) 2 else 1,
+                            ProjectionHolder.currentModelName)
                     }
                     "showCaptureRange" -> { overlayView.showCaptureRange = valueStr.toBoolean(); overlayView.postInvalidate(); ConfigManager.updateConfig { showCaptureRange = valueStr.toBoolean() } }
                     "showDetectionBox" -> { overlayView.showDetectionBox = valueStr.toBoolean(); overlayView.postInvalidate(); ConfigManager.updateConfig { showDetectionBox = valueStr.toBoolean() } }
@@ -573,6 +579,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         if (triggerClasses.isEmpty() && currentClasses.isNotEmpty()) triggerClasses = currentClasses.keys.toMutableSet()
         Log.d(TAG, "启动模型类别: $currentClasses, aimClasses=$aimClasses, triggerClasses=$triggerClasses")
 
+        isServiceReady = true
         ProjectionHolder.updateState(1, JniCallBack.getBackend())
         return START_NOT_STICKY
     }
@@ -587,6 +594,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         try { if (triggerOverlayAdded) { wm.removeView(triggerOverlay); triggerOverlayAdded = false } } catch (_: Exception) {}
         try { if (touchDisplayAdded) { wm.removeView(touchDisplayView); touchDisplayAdded = false } } catch (_: Exception) {}
         try { if (areaSettingsAdded) { wm.removeView(areaSettingsView); areaSettingsAdded = false } } catch (_: Exception) {}
+        isServiceReady = false
     }
 
 

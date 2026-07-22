@@ -183,6 +183,19 @@
                 </div>
 
                 <button id="toggleButton" class="primary-btn" type="button" onclick="invokeNative('toggleAimbot')">启动悬浮窗</button>
+
+                <!-- 推理运行开关 -->
+                <div class="card" id="inferenceCard" style="display:none;">
+                    <div class="setting-row" style="border-bottom:none;">
+                        <div class="setting-main">
+                            <div class="setting-title">推理运行</div>
+                            <div class="setting-desc" id="inferenceStatusText">检测循环未启动</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="inferenceSwitch" onchange="invokeNative('toggleInference')">
+                        </label>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -546,6 +559,18 @@
             const tb = document.getElementById("toggleButton");
             tb.textContent = data.running ? "停止" : "启动";
             document.getElementById("statusDot").classList.toggle("running", !!data.running);
+
+            // 推理状态显示
+            const inferCard = document.getElementById("inferenceCard");
+            const inferSwitch = document.getElementById("inferenceSwitch");
+            const inferText = document.getElementById("inferenceStatusText");
+            if (data.running) {
+                inferCard.style.display = "block";
+                inferSwitch.checked = !!data.inferRunning;
+                inferText.textContent = data.inferRunning ? "检测循环运行中" : "检测循环已停止";
+            } else {
+                inferCard.style.display = "none";
+            }
         },
         renderFloatState(raw) {
             const data = JSON.parse(raw);

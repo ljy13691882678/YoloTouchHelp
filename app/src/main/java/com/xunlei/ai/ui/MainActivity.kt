@@ -346,7 +346,7 @@ class MainActivity : AppCompatActivity() {
     private fun initAfterDisclaimer() {
         android.os.Handler(mainLooper).postDelayed({ loadDefaultModel() }, 500)
         android.os.Handler(mainLooper).postDelayed({ checkForUpdatesOnStartup() }, 900)
-        android.os.Handler(mainLooper).postDelayed({ checkPermissionsOnStart() }, 1500)
+        // 移除开机权限检查 - 仅在点击启动时检查
     }
 
     private fun isDisclaimerAccepted(): Boolean {
@@ -732,6 +732,7 @@ class MainActivity : AppCompatActivity() {
         return JSONObject().apply {
             put("statusText", statusLabel(appState))
             put("running", appState != XunleiAIState.STANDBY)
+            put("inferRunning", appState == XunleiAIState.INFERENCING)
             put("versionName", getAppVersionName())
             put("backend", ProjectionHolder.currentModelName.ifEmpty { "---" })
             put("privilegeValue", getPrivilegeStatus())
@@ -1370,6 +1371,21 @@ class MainActivity : AppCompatActivity() {
         fun setClassTriggerOffset(classId: Int, value: Float) {
             runOnUiThread {
                 sendParamToService("classTriggerOffset_$classId", value.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun toggleInference() {
+            runOnUiThread {
+                // Send modelRunning toggle to FloatService
+                try {
+                    val intent = Intent(this@MainActivity, FloatService::class.java).apply {
+                        action = FloatService.ACTION_SET_PARAM
+                        putExtra(FloatService.EXTRA_KEY, "modelRunning")
+                        putExtra(FloatService.EXTRA_VALUE, "toggle")
+                    }
+                    startService(intent)
+                } catch (_: Exception) {}
             }
         }
 
