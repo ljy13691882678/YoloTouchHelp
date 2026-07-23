@@ -15,8 +15,9 @@ app/build/
 captures/
 
 app/release.jks
-*.keystore
-*.jks
+# Keep debug.keystore tracked for consistent CI signing
+# *.keystore
+# *.jks
 
 bin/
 obj/
