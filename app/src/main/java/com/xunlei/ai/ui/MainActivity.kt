@@ -140,6 +140,10 @@ class MainActivity : AppCompatActivity() {
     private var pageReady = false
     private var rootAvailable = false
     private var startupUpdateChecked = false
+    private var savedTechMode = false
+    private var savedThemeColor: String? = null
+    private var savedBgImagePath: String? = null
+    private var savedBgImageName: String? = null
 
     private var permissionDialog: HtmlDialogHandle? = null
     private var modelPickerDialog: HtmlDialogHandle? = null
@@ -346,7 +350,11 @@ class MainActivity : AppCompatActivity() {
     private fun initAfterDisclaimer() {
         android.os.Handler(mainLooper).postDelayed({ loadDefaultModel() }, 500)
         android.os.Handler(mainLooper).postDelayed({ checkForUpdatesOnStartup() }, 900)
-        // 移除开机权限检查 - 仅在点击启动时检查
+        val themePrefs = getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
+        savedTechMode = themePrefs.getBoolean("techMode", false)
+        savedThemeColor = themePrefs.getString("themeColor", null)
+        savedBgImagePath = themePrefs.getString("bgImagePath", null)
+        savedBgImageName = themePrefs.getString("bgImageName", null)
     }
 
     private fun isDisclaimerAccepted(): Boolean {
@@ -733,6 +741,10 @@ class MainActivity : AppCompatActivity() {
             put("projectIntro", "本项目是个公益开源项目 会持续长久更新")
             put("model", buildModelJson(model))
             put("models", JSONArray().apply { modelList.forEach { put(it.displayName) } })
+            put("techMode", savedTechMode)
+            put("themeColor", savedThemeColor ?: JSONObject.NULL)
+            put("bgImagePath", savedBgImagePath ?: JSONObject.NULL)
+            put("bgImageName", savedBgImageName ?: JSONObject.NULL)
         }
     }
 
@@ -1208,29 +1220,38 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun setBool(key: String, value: Boolean) {
             runOnUiThread { try {
-                // Save persistent settings to ConfigManager
-                val persistKeys = setOf("aimbotEnabled","aimHoldEnabled","recoilEnabled","triggerEnabled",
-                    "autoStopEnabled","autoTriggerAdsEnabled","showCaptureRange","showDetectionBox",
-                    "showCenterDot","showLockRay","kalmanPredictEnabled","aimTouchDisplay")
-                if (key in persistKeys) {
-                    ConfigManager.updateConfig {
-                        when (key) {
-                            "aimbotEnabled" -> aimbotEnabled = value
-                            "aimHoldEnabled" -> aimHoldEnabled = value
-                            "recoilEnabled" -> recoilEnabled = value
-                            "triggerEnabled" -> triggerEnabled = value
-                            "autoStopEnabled" -> autoStopEnabled = value
-                            "autoTriggerAdsEnabled" -> autoTriggerAdsEnabled = value
-                            "showCaptureRange" -> showCaptureRange = value
-                            "showDetectionBox" -> showDetectionBox = value
-                            "showCenterDot" -> showCenterDot = value
-                            "showLockRay" -> showLockRay = value
-                            "kalmanPredictEnabled" -> kalmanPredictEnabled = value
-                            "aimTouchDisplay" -> aimTouchDisplay = value
+                when (key) {
+                    "techMode" -> {
+                        savedTechMode = value
+                        getSharedPreferences("theme_prefs", Context.MODE_PRIVATE).edit()
+                            .putBoolean("techMode", value).apply()
+                        syncPageState()
+                    }
+                    else -> {
+                        val persistKeys = setOf("aimbotEnabled","aimHoldEnabled","recoilEnabled","triggerEnabled",
+                            "autoStopEnabled","autoTriggerAdsEnabled","showCaptureRange","showDetectionBox",
+                            "showCenterDot","showLockRay","kalmanPredictEnabled","aimTouchDisplay")
+                        if (key in persistKeys) {
+                            ConfigManager.updateConfig {
+                                when (key) {
+                                    "aimbotEnabled" -> aimbotEnabled = value
+                                    "aimHoldEnabled" -> aimHoldEnabled = value
+                                    "recoilEnabled" -> recoilEnabled = value
+                                    "triggerEnabled" -> triggerEnabled = value
+                                    "autoStopEnabled" -> autoStopEnabled = value
+                                    "autoTriggerAdsEnabled" -> autoTriggerAdsEnabled = value
+                                    "showCaptureRange" -> showCaptureRange = value
+                                    "showDetectionBox" -> showDetectionBox = value
+                                    "showCenterDot" -> showCenterDot = value
+                                    "showLockRay" -> showLockRay = value
+                                    "kalmanPredictEnabled" -> kalmanPredictEnabled = value
+                                    "aimTouchDisplay" -> aimTouchDisplay = value
+                                }
+                            }
                         }
+                        sendParamToService(key, if (value) "true" else "false")
                     }
                 }
-                sendParamToService(key, if (value) "true" else "false")
             } catch(e: Exception) { android.util.Log.e("XunleiAI", "setBool error", e) } }
         }
 
@@ -1403,6 +1424,17 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Exception) {}
             }
         }
+
+        @JavascriptInterface
+        fun pickBgImage() {
+            runOnUiThread {
+                try {
+                    if (!this@MainActivity.isFinishing) {
+                        bgImageLauncher.launch("image/*")
+                    }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     private val areaImageLauncher = registerForActivityResult(
@@ -1441,6 +1473,31 @@ class MainActivity : AppCompatActivity() {
                 } catch (_: Exception) {}
             } catch (e: Exception) {
                 android.util.Log.e("XunleiAI_AI", "Failed to copy area image", e)
+            }
+        }
+    }
+
+    private val bgImageLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val input = contentResolver.openInputStream(uri)
+                val bgDir = java.io.File(filesDir, "bg_images")
+                bgDir.mkdirs()
+                val targetFile = java.io.File(bgDir, "wallpaper.png")
+                if (input != null) {
+                    java.io.FileOutputStream(targetFile).use { output -> input.copyTo(output) }
+                    input.close()
+                }
+                savedBgImagePath = targetFile.absolutePath
+                savedBgImageName = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                getSharedPreferences("theme_prefs", Context.MODE_PRIVATE).edit()
+                    .putString("bgImagePath", savedBgImagePath)
+                    .putString("bgImageName", savedBgImageName).apply()
+                syncPageState()
+            } catch (e: Exception) {
+                android.util.Log.e("XunleiAI", "bg image error", e)
             }
         }
     }

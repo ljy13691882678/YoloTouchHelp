@@ -620,8 +620,7 @@ private var triggerOverlay: TriggerOverlayView? = null
         overlayParams = makeParams(MATCH_PARENT, MATCH_PARENT,
             WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
         wm.addView(overlayView, overlayParams); overlayAdded = true
     }
 
