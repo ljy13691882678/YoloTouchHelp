@@ -1397,7 +1397,9 @@ class MainActivity : AppCompatActivity() {
         fun pickAreaImage() {
             runOnUiThread {
                 try {
-                    areaImageLauncher.launch("image/*")
+                    if (!this@MainActivity.isFinishing) {
+                        areaImageLauncher.launch("image/*")
+                    }
                 } catch (_: Exception) {}
             }
         }
@@ -1417,12 +1419,26 @@ class MainActivity : AppCompatActivity() {
                     java.io.FileOutputStream(targetFile).use { output -> input.copyTo(output) }
                     input.close()
                 }
-                // Send file path to FloatService
+                // Send file path to FloatService (only if service is running)
                 val intent = Intent(this@MainActivity, FloatService::class.java).apply {
                     action = "ACTION_AREA_IMAGE"
                     putExtra("areaImagePath", targetFile.absolutePath)
                 }
-                try { startService(intent) } catch (_: Exception) {}
+                try {
+                    // Check if service is running before starting
+                    val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val running = am.getRunningServices(100).any {
+                        it.service.className == FloatService::class.java.name
+                    }
+                    if (running) {
+                        startService(intent)
+                    } else {
+                        android.util.Log.w("XunleiAI", "FloatService not running, area image queued")
+                        // Store path for later use
+                        getSharedPreferences("area_prefs", Context.MODE_PRIVATE).edit()
+                            .putString("pendingAreaImage", targetFile.absolutePath).apply()
+                    }
+                } catch (_: Exception) {}
             } catch (e: Exception) {
                 android.util.Log.e("XunleiAI_AI", "Failed to copy area image", e)
             }

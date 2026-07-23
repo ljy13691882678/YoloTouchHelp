@@ -26,6 +26,12 @@ android {
     }
 
     signingConfigs {
+        create("debugCustom") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("release") {
             storeFile = file("release.jks")
             storePassword = "aimbot123456"
@@ -36,7 +42,7 @@ android {
 
     buildTypes {
         debug {
-            // Uses default auto-generated debug signing config
+            signingConfig = signingConfigs.getByName("debugCustom")
         }
         release {
             isMinifyEnabled = false
