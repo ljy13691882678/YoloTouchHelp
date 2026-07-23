@@ -1207,7 +1207,7 @@ class MainActivity : AppCompatActivity() {
 
         @JavascriptInterface
         fun setBool(key: String, value: Boolean) {
-            runOnUiThread {
+            runOnUiThread { try {
                 // Save persistent settings to ConfigManager
                 val persistKeys = setOf("aimbotEnabled","aimHoldEnabled","recoilEnabled","triggerEnabled",
                     "autoStopEnabled","autoTriggerAdsEnabled","showCaptureRange","showDetectionBox",
@@ -1231,12 +1231,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 sendParamToService(key, if (value) "true" else "false")
-            }
+            } catch(e: Exception) { android.util.Log.e("XunleiAI", "setBool error", e) } }
         }
 
         @JavascriptInterface
         fun setInt(key: String, value: Int) {
-            runOnUiThread {
+            runOnUiThread { try {
                 ConfigManager.updateConfig {
                     when (key) {
                         "range" -> range = value
@@ -1258,12 +1258,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 sendParamToService(key, value.toString())
-            }
+            } catch(e: Exception) { android.util.Log.e("XunleiAI", "setInt error", e) } }
         }
 
         @JavascriptInterface
         fun setFloat(key: String, value: Float) {
-            runOnUiThread {
+            runOnUiThread { try {
                 ConfigManager.updateConfig {
                     when (key) {
                         "speed" -> speed = value
@@ -1289,7 +1289,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 sendParamToService(key, value.toString())
-            }
+            } catch(e: Exception) { android.util.Log.e("XunleiAI", "setFloat error", e) } }
         }
 
         @JavascriptInterface
@@ -1431,15 +1431,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun sendParamToService(key: String, value: String) {
         try {
+            // Only send if FloatService is already running
+            if (appState == XunleiAIState.STANDBY) return
             val intent = Intent(this@MainActivity, FloatService::class.java).apply {
                 action = FloatService.ACTION_SET_PARAM
                 putExtra(FloatService.EXTRA_KEY, key)
                 putExtra(FloatService.EXTRA_VALUE, value)
             }
-            startService(intent)
-        } catch (_: Exception) {
-            // Service may not be running
-        }
+            try { startService(intent) } catch (_: Exception) {}
+        } catch (_: Exception) {}
     }
 
     inner class DisclaimerDialogBridge {

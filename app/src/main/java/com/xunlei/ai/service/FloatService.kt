@@ -382,7 +382,11 @@ private var triggerOverlay: TriggerOverlayView? = null
     private fun handleParamChange(intent: Intent) {
         val key = intent.getStringExtra(EXTRA_KEY) ?: return
         val valueStr = intent.getStringExtra(EXTRA_VALUE) ?: return
-        if (!isServiceReady) return
+        if (!isServiceReady) {
+            // Service not ready yet - parameter saved to ConfigManager by caller, will apply on start
+            return
+        }
+        if (!::overlayView.isInitialized) return
         mainHandler.post {
             try {
                 when (key) {
