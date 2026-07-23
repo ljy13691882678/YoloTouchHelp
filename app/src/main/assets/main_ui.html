@@ -502,6 +502,7 @@
     }
     function setInt(key, value) {
         fmState[key] = parseInt(value, 10);
+        if (key === "aimMode" && uiState.tab === "aim") renderAimContent();
         if (key === "touchOrientationMode" && uiState.tab === "system") renderSystemContent();
         invokeNative('setInt', key, parseInt(value, 10));
     }
