@@ -910,29 +910,7 @@ private var triggerOverlay: TriggerOverlayView? = null
                 inPreferredConfig = Bitmap.Config.ARGB_8888
                 inSampleSize = 1
             }
-            var bitmap = BitmapFactory.decodeFile(imagePath, opts)
-            // Handle EXIF rotation
-            if (bitmap != null) {
-                try {
-                    val exif = androidx.exifinterface.media.ExifInterface(imagePath)
-                    val orientation = exif.getAttributeInt(
-                        androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
-                    )
-                    val matrix = android.graphics.Matrix()
-                    when (orientation) {
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
-                        androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
-                    }
-                    if (!matrix.isIdentity()) {
-                        val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                        if (rotated !== bitmap) { bitmap.recycle(); bitmap = rotated }
-                    }
-                } catch (_: Exception) {}
-            }
+            val bitmap = BitmapFactory.decodeFile(imagePath, opts)
             if (areaSettingsView == null) setupAreaSettingsView()
             if (areaSettingsAdded && bitmap != null) {
                 areaSettingsView?.setBackgroundBitmap(bitmap)
