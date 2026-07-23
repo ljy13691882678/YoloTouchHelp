@@ -24,6 +24,7 @@ import com.xunlei.ai.manager.InferenceManager
 import com.xunlei.ai.manager.OverlayManager
 import com.xunlei.ai.manager.ConfigManager
 import com.xunlei.ai.view.OverlayCanvasView
+import com.xunlei.ai.view.VolumeKeyController
 import com.xunlei.ai.view.TriggerOverlayView
 import com.xunlei.ai.view.TouchDisplayView
 import com.xunlei.ai.view.AreaSettingsView
@@ -52,6 +53,7 @@ class FloatService : Service() {
 
     private lateinit var wm: WindowManager
     private lateinit var overlayView: OverlayCanvasView
+    private var volumeKeyView: VolumeKeyController? = null
 
     private var overlayParams: WindowManager.LayoutParams? = null
     private var overlayAdded = false
@@ -576,7 +578,7 @@ private var triggerOverlay: TriggerOverlayView? = null
                 mediaProjection = manager.getMediaProjection(code, data); setupImageReader()
             } catch (e: Exception) { Log.e(TAG, "projection创建失败: ${e.message}") }
         }
-        setupOverlay(); initTouchInjector()
+        setupOverlay(); setupVolumeKeyController(); initTouchInjector()
 
         lastModelIndex = ProjectionHolder.selectedModelIndex
         // Load classes map for current model
@@ -598,6 +600,7 @@ private var triggerOverlay: TriggerOverlayView? = null
     private fun cleanupViews() {
 
         try { if (overlayAdded) { wm.removeView(overlayView); overlayAdded = false } } catch (_: Exception) {}
+        try { if (volumeKeyView != null) { wm.removeView(volumeKeyView); volumeKeyView = null } } catch (_: Exception) {}
         try { if (triggerOverlayAdded) { wm.removeView(triggerOverlay); triggerOverlayAdded = false } } catch (_: Exception) {}
         try { if (touchDisplayAdded) { wm.removeView(touchDisplayView); touchDisplayAdded = false } } catch (_: Exception) {}
         try { if (areaSettingsAdded) { wm.removeView(areaSettingsView); areaSettingsAdded = false } } catch (_: Exception) {}
@@ -623,6 +626,40 @@ private var triggerOverlay: TriggerOverlayView? = null
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
         wm.addView(overlayView, overlayParams); overlayAdded = true
+    }
+
+    private fun setupVolumeKeyController() {
+        if (volumeKeyView != null) return
+        volumeKeyView = VolumeKeyController(this)
+        val p = android.view.WindowManager.LayoutParams(
+            1, 1,
+            android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            android.graphics.PixelFormat.TRANSLUCENT
+        )
+        p.gravity = android.view.Gravity.TOP or android.view.Gravity.START
+        p.x = 0; p.y = 0
+        try {
+            wm.addView(volumeKeyView, p)
+            volumeKeyView!!.isFocusable = true
+            volumeKeyView!!.requestFocus()
+            volumeKeyView!!.onToggleInference = { start ->
+                mainHandler.post {
+                    modelRunning = start
+                    if (start && !inferRunning.get()) startInferLoop()
+                    else if (!start) {
+                        if (!recordEnabled) { inferRunning.set(false); broadcastState(1) }
+                    }
+                    broadcastState(if (start && inferRunning.get()) 2 else 1,
+                        ProjectionHolder.currentModelName)
+                    if (overlayAdded) overlayView.inferRunning = start
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Volume key controller setup failed", e)
+        }
     }
 
     private fun initTouchInjector() {
@@ -1103,6 +1140,7 @@ private var triggerOverlay: TriggerOverlayView? = null
                         mainHandler.post {
                             overlayView.fps = currentFps.toInt().toString()
                             overlayView.temperature = currentTemperature
+                            overlayView.inferRunning = inferRunning.get()
                             overlayView.postInvalidateOnAnimation()
                         }
                     }

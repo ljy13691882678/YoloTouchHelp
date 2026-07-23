@@ -26,6 +26,7 @@ class OverlayCanvasView(context: Context) : View(context) {
     // FPS & temperature stats
     var fps: String = ""
     var temperature: String = ""
+    var inferRunning: Boolean = false
     private val paintStats = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#CCFFFFFF")
         textSize = 28f
@@ -111,9 +112,11 @@ class OverlayCanvasView(context: Context) : View(context) {
         // Draw FPS and temperature in top-center
         if (fps.isNotEmpty() || temperature.isNotEmpty()) {
             val statText = buildString {
+                append(if (inferRunning) "运行中" else "已停止")
+                append("  ")
                 if (fps.isNotEmpty()) append("FPS:$fps")
                 if (temperature.isNotEmpty()) {
-                    if (isNotEmpty()) append("  ")
+                    if (fps.isNotEmpty()) append("  ")
                     append("$temperature")
                 }
             }

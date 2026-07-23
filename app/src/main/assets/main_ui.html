@@ -387,11 +387,7 @@
 
     function renderModelContent() {
         const s = fmState;
-        const modelList = Array.isArray(s.modelNames) && s.modelNames.length > 0
-            ? s.modelNames.map((name,i)=>`<button class="list-button ${s.modelIndex===i?"active":""}" type="button" onclick="selectModel(${i})"><div class="list-title">${escapeHtml(name)}</div><div class="list-desc">${s.modelIndex===i?"当前已选择此模型":"点击切换到该模型"}</div></button>`).join("")
-            : `<div class="empty">无可用模型</div>`;
         let parts = [];
-        parts.push(`<div class="section"><div class="section-title">模型选择</div>${modelList}</div>`);
         parts.push(`<div class="section">${sliderRow({label:"检测置信度",key:"confidence",value:s.confidence,min:0.1,max:0.9,step:0.01,type:"float",format:"float2",note:"低于此值的检测结果将被过滤"})}${switchRow("卡尔曼预测","kalmanPredictEnabled",s.kalmanPredictEnabled,"启用后保留 trackId，并在短暂丢框时继续预测")}${s.kalmanPredictEnabled?sliderRow({label:"丢失容忍帧",key:"kalmanMaxMissed",value:s.kalmanMaxMissed,min:0,max:30,step:1,type:"int",format:"frame"}):""}${s.kalmanPredictEnabled?sliderRow({label:"过程噪声",key:"kalmanProcessNoise",value:s.kalmanProcessNoise,min:0,max:500,step:1,type:"float",format:"int"}):""}${s.kalmanPredictEnabled?sliderRow({label:"测量噪声",key:"kalmanMeasureNoise",value:s.kalmanMeasureNoise,min:1,max:500,step:1,type:"float",format:"int"}):""}${s.kalmanPredictEnabled?sliderRow({label:"框平滑",key:"kalmanBoxSmooth",value:s.kalmanBoxSmooth,min:0,max:1,step:0.01,type:"float",format:"float2"}):""}${s.kalmanPredictEnabled?sliderRow({label:"匹配 IoU",key:"kalmanMatchIouThreshold",value:s.kalmanMatchIouThreshold,min:0,max:1,step:0.01,type:"float",format:"float2"}):""}</div>`);
         document.getElementById("modelContent").innerHTML = parts.join("");
         rebindSliders();
