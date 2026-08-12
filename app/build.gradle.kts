@@ -40,18 +40,20 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("release.jks")
-            storePassword = "aimbot123456"
-            keyAlias = "aimbot"
-            keyPassword = "aimbot123456"
+        if (file("release.jks").exists()) {
+            create("release") {
+                storeFile = file("release.jks")
+                storePassword = "aimbot123456"
+                keyAlias = "aimbot"
+                keyPassword = "aimbot123456"
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
