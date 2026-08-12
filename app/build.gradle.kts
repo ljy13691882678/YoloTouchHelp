@@ -23,6 +23,8 @@ android {
                 cppFlags += ""
             }
         }
+        buildConfigField("boolean", "IS_INFER", "false")
+        buildConfigField("boolean", "IS_HOST", "false")
     }
 
     flavorDimensions += "variant"
@@ -31,11 +33,13 @@ android {
             dimension = "variant"
             applicationId = "com.yolotouchhelp.aimbot.infer"
             versionNameSuffix = "-infer"
+            buildConfigField("boolean", "IS_INFER", "true")
         }
         create("host") {
             dimension = "variant"
             applicationId = "com.yolotouchhelp.aimbot.host"
             versionNameSuffix = "-host"
+            buildConfigField("boolean", "IS_HOST", "true")
         }
     }
 
