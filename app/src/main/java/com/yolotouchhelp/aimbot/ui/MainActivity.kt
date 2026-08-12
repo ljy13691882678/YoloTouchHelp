@@ -471,6 +471,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun openQQ() {
+        openExternalUrl(
+            url = "https://qm.qq.com/cgi-bin/qm/qr?from=app&groupid=977186929",
+            chooserTitle = "选择应用打开 QQ 群",
+            notFoundMessage = "未找到可打开 QQ 的应用",
+            failureMessage = "打开 QQ 群失败"
+        )
+    }
+
     private fun openTelegram() {
         openExternalUrl(
             url = TELEGRAM_URL,
@@ -1164,6 +1173,11 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openGithub() {
             runOnUiThread { this@MainActivity.openGithub() }
+        }
+
+        @JavascriptInterface
+        fun openQQ() {
+            runOnUiThread { this@MainActivity.openQQ() }
         }
 
         @JavascriptInterface

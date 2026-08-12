@@ -18,7 +18,7 @@ import com.yolotouchhelp.aimbot.service.RemoteInjectorService;
 public class ShizukuInjectorClient implements TouchInjectorInterface {
     private static final String TAG = "ShizukuInjector";
     private static final long CONNECT_TIMEOUT_MS = 10000;
-    private static final int USER_SERVICE_VERSION = 1;
+    private static final int USER_SERVICE_VERSION = 2;
 
     private final Context context;
     private volatile boolean connected = false;
