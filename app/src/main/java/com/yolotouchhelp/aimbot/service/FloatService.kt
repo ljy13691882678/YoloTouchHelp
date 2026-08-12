@@ -35,6 +35,7 @@ import com.yolotouchhelp.aimbot.injector.ShizukuInjectorClient
 import com.yolotouchhelp.aimbot.injector.InjectorCallback
 import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.inference.KalmanObjectTracker
+import com.yolotouchhelp.aimbot.remote.RemoteModeManager
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 
 class FloatService : Service() {
@@ -383,6 +384,7 @@ class FloatService : Service() {
             return START_STICKY
         }
         if (intent?.action == "STOP") {
+            RemoteModeManager.cleanup()
             if (mediaRecorder != null) toggleRecording(false)
             inferRunning.set(false)
             executor.shutdown()
@@ -395,15 +397,69 @@ class FloatService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val code = ProjectionHolder.resultCode; val data = ProjectionHolder.resultData
-        if (data != null) {
-            try {
-                val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                mediaProjection = manager.getMediaProjection(code, data); setupImageReader()
-            } catch (e: Exception) { Log.e(TAG, "projection创建失败: ${e.message}") }
+
+        // Host端不需要录屏权限，跳过MediaProjection初始化，但需要屏幕尺寸用于坐标映射
+        if (BuildConfig.FLAVOR != "host") {
+            val code = ProjectionHolder.resultCode; val data = ProjectionHolder.resultData
+            if (data != null) {
+                try {
+                    val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    mediaProjection = manager.getMediaProjection(code, data); setupImageReader()
+                } catch (e: Exception) { Log.e(TAG, "projection创建失败: ${e.message}") }
+            }
+        } else {
+            // Host端：直接使用当前屏幕尺寸
+            captureW = screenWidth; captureH = screenHeight
+            Log.d(TAG, "Host mode: using screen size ${captureW}x${captureH}")
         }
+
+        // Remote mode: connect websocket before normal init
+        val cfg = ConfigManager.getConfig()
+        RemoteModeManager.mode = when (cfg.remoteMode) {
+            1 -> RemoteModeManager.Mode.HOST
+            2 -> RemoteModeManager.Mode.CLIENT
+            else -> RemoteModeManager.Mode.LOCAL
+        }
+        RemoteModeManager.clientIp = cfg.remoteClientIp
+        RemoteModeManager.clientPort = cfg.remoteClientPort
+        RemoteModeManager.hostPort = cfg.remoteHostPort
+        if (RemoteModeManager.mode == RemoteModeManager.Mode.HOST) {
+            RemoteModeManager.startHost()
+        } else if (RemoteModeManager.mode == RemoteModeManager.Mode.CLIENT) {
+            RemoteModeManager.startClient()
+        }
+
         setupBall(); setupOverlay(); initTouchInjector()
         lastModelIndex = ProjectionHolder.selectedModelIndex
+
+        // Setup remote mode callback
+        RemoteModeManager.onDetectionsReceived = { dets ->
+            if (RemoteModeManager.mode == RemoteModeManager.Mode.HOST) {
+                // Map remote detections to local screen coordinates for this device
+                val cfg = ConfigManager.getConfig()
+                val mapAreaX = if (cfg.remoteMapAreaW > 0) cfg.remoteMapAreaX else 0
+                val mapAreaY = if (cfg.remoteMapAreaH > 0) cfg.remoteMapAreaY else 0
+                val mapAreaW = if (cfg.remoteMapAreaW > 0) cfg.remoteMapAreaW else captureW
+                val mapAreaH = if (cfg.remoteMapAreaH > 0) cfg.remoteMapAreaH else captureH
+                val clientW = dets.firstOrNull()?.clientScreenW?.takeIf { it > 0 } ?: captureW
+                val clientH = dets.firstOrNull()?.clientScreenH?.takeIf { it > 0 } ?: captureH
+
+                val mapped = dets.map { rd ->
+                    val rx = (rd.x1 / clientW) * mapAreaW + mapAreaX
+                    val ry = (rd.y1 / clientH) * mapAreaH + mapAreaY
+                    val rw = ((rd.x2 - rd.x1) / clientW) * mapAreaW
+                    val rh = ((rd.y2 - rd.y1) / clientH) * mapAreaH
+                    DetectionInfo(RectF(rx, ry, rx + rw, ry + rh), rd.classId, rd.className, rd.score)
+                }
+                lastDetections = mapped
+                hasDetects.set(mapped.isNotEmpty())
+                mainHandler.post { overlayView.updateDetections(lastDetections) }
+            }
+        }
+        RemoteModeManager.onConnectionStateChanged = { state ->
+            Log.d(TAG, "Remote connection state: $state")
+        }
+
         // Load classes map for current model
         val entry = ProjectionHolder.modelList.getOrNull(ProjectionHolder.selectedModelIndex)
         currentClasses = entry?.classes ?: emptyMap()
@@ -479,7 +535,28 @@ class FloatService : Service() {
                 }
             }
 
-            // Try root first
+            // Host端强制使用Root，不尝试Shizuku
+            if (BuildConfig.FLAVOR == "host") {
+                try {
+                    val rootClient = RootInjectorClient(this@FloatService)
+                    rootClient.connect(object : InjectorCallback {
+                        override fun onConnected() {
+                            touchClient = rootClient
+                            commonCallback.onConnected()
+                        }
+                        override fun onDisconnected() { commonCallback.onDisconnected() }
+                        override fun onError(msg: String) {
+                            Log.e(TAG, "Host Root init failed: $msg")
+                            commonCallback.onError("Host requires Root")
+                        }
+                    })
+                } catch (e: Exception) {
+                    Log.e(TAG, "Host Root init exception: ${e.message}")
+                }
+                return@execute
+            }
+
+            // Infer端：Root优先，fallback到Shizuku
             try {
                 val rootClient = RootInjectorClient(this@FloatService)
                 rootClient.connect(object : InjectorCallback {
@@ -516,6 +593,11 @@ class FloatService : Service() {
     }
 
     private fun toggleRecording(enabled: Boolean) {
+        // Host端不支持和录屏
+        if (BuildConfig.FLAVOR == "host") {
+            Log.w(TAG, "Host端不支持录屏")
+            return
+        }
         if (enabled) {
             if (mediaRecorder != null) return
             try {
@@ -1178,9 +1260,151 @@ class FloatService : Service() {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
             var aliveCtr = 0
             while (inferRunning.get()) {
-                if (++aliveCtr % 30 == 0) { Log.d(TAG, "alive trigger=$triggerEnabled shizuku=${touchClient?.isConnected()} detects=${hasDetects.get()}") }
+                if (++aliveCtr % 30 == 0) { Log.d(TAG, "alive trigger=$triggerEnabled shizuku=${touchClient?.isConnected()} detects=${hasDetects.get()} mode=${RemoteModeManager.mode}") }
                 val currentRange = guiPanel.range
                 if (currentRange != cachedRangePx) { cachedRangePx = currentRange; cachedRange = currentRange.toFloat() }
+
+                // Remote HOST mode: skip capture/inference, use remote detections
+                if (RemoteModeManager.mode == RemoteModeManager.Mode.HOST) {
+                    if (!hasDetects.get()) {
+                        clearAimSession("remote_no_data")
+                    } else {
+                        val holdToAimActive = if (aimHoldEnabled) {
+                            val adsAimTrigger = triggerEnabled && autoTriggerAdsEnabled
+                            if (adsAimTrigger) true else {
+                                val fingerOnTrigger = touchClient?.isFingerInTriggerZone() ?: false
+                                val fingerOnAds = touchClient?.isFingerInAdsZone() ?: false
+                                fingerOnTrigger || fingerOnAds
+                            }
+                        } else true
+
+                        val aimDets = if (aimClasses.isEmpty()) lastDetections
+                            else lastDetections.filter { it.classId in aimClasses }
+
+                        val target = if (aimDets.isNotEmpty()) {
+                            aimController.selectTarget(aimDets, centerX, centerY)
+                        } else null
+                        val rayPoint = if (showLockRay) aimController.currentLockRayPoint() else null
+                        mainHandler.post {
+                            overlayView.showLockRay = showLockRay
+                            overlayView.updateLockRay(rayPoint?.first, rayPoint?.second)
+                        }
+
+                        if (aimbotOn.get() && target != null && holdToAimActive) {
+                            aimController.executeAiming(target.aimX, target.aimY, centerX, centerY)
+                        } else {
+                            val reason = when {
+                                !aimbotOn.get() -> "aimbot_off"
+                                !holdToAimActive -> "hold_inactive"
+                                aimDets.isEmpty() -> "no_targets"
+                                else -> "no_target_selected"
+                            }
+                            val keepVisualTargets = reason == "hold_inactive" || reason == "aimbot_off"
+                            clearAimSession(
+                                reason = reason,
+                                clearVisualTargets = !keepVisualTargets,
+                                clearLockRay = target == null
+                            )
+                        }
+                    }
+                    triggerController.processTrigger(lastDetections, centerX, centerY, hasDetects.get())
+                    Thread.sleep(8)
+                    continue
+                }
+
+                // Remote CLIENT mode: normal inference + send detections
+                if (RemoteModeManager.mode == RemoteModeManager.Mode.CLIENT) {
+                    val image = imageReader?.acquireLatestImage()
+                    if (image == null) { Thread.yield(); continue }
+                    val hwBuf = image.hardwareBuffer
+                    try {
+                        hasDetects.set(false)
+                        val plane = image.planes[0]; val buffer = plane.buffer
+                        val regionW = cachedRangePx * 2; val regionH = cachedRangePx * 2
+                        val offsetX = (captureW - regionW) / 2; val offsetY = (captureH - regionH) / 2
+
+                        val result = JniCallBack.detect(buffer, offsetX, offsetY, regionW, regionH, captureW, captureH, plane.rowStride, plane.pixelStride)
+
+                        val rawDetections = mutableListOf<DetectionInfo>()
+                        if (result != null) {
+                            val count = result.size / 6
+                            var i = 0
+                            while (i < count && rawDetections.size < detectionBuffer.size) {
+                                val cid = result[i * 6].toInt()
+                                val score = result[i * 6 + 1]
+                                val rect = RectF(
+                                    result[i * 6 + 2] * captureW,
+                                    result[i * 6 + 3] * captureH,
+                                    result[i * 6 + 4] * captureW,
+                                    result[i * 6 + 5] * captureH
+                                )
+                                rawDetections += DetectionInfo(rect, cid, currentClasses[cid] ?: "cls$cid", score = score)
+                                i++
+                            }
+                        }
+
+                        lastDetections = if (kalmanPredictEnabled) {
+                            kalmanTracker.update(rawDetections, SystemClock.elapsedRealtime())
+                        } else {
+                            kalmanTracker.reset()
+                            rawDetections
+                        }
+                        hasDetects.set(lastDetections.isNotEmpty())
+                        mainHandler.post { overlayView.updateDetections(lastDetections) }
+
+                        // Send detections to host
+                        RemoteModeManager.sendDetections(lastDetections, captureW, captureH)
+
+                        // Infer端在Client模式下仅发送检测结果，不执行本地自瞄/扳机
+                        if (BuildConfig.FLAVOR == "infer") {
+                            // 保留检测框显示，跳过自瞄和扳机
+                            mainHandler.post {
+                                overlayView.showLockRay = showLockRay
+                                overlayView.updateLockRay(null, null)
+                            }
+                        } else {
+                            // Host端或本地端：正常自瞄/扳机
+                            val holdToAimActive = if (aimHoldEnabled) {
+                                val adsAimTrigger = triggerEnabled && autoTriggerAdsEnabled
+                                if (adsAimTrigger) true else {
+                                    val fingerOnTrigger = touchClient?.isFingerInTriggerZone() ?: false
+                                    val fingerOnAds = touchClient?.isFingerInAdsZone() ?: false
+                                    fingerOnTrigger || fingerOnAds
+                                }
+                            } else true
+
+                            val aimDets = if (aimClasses.isEmpty()) lastDetections
+                                else lastDetections.filter { it.classId in aimClasses }
+
+                            val target = if (aimDets.isNotEmpty()) {
+                                aimController.selectTarget(aimDets, centerX, centerY)
+                            } else null
+                            val rayPoint = if (showLockRay) aimController.currentLockRayPoint() else null
+                            mainHandler.post {
+                                overlayView.showLockRay = showLockRay
+                                overlayView.updateLockRay(rayPoint?.first, rayPoint?.second)
+                            }
+
+                            if (aimbotOn.get() && target != null && holdToAimActive) {
+                                aimController.executeAiming(target.aimX, target.aimY, centerX, centerY)
+                            } else {
+                                val reason = when {
+                                    !aimbotOn.get() -> "aimbot_off"
+                                    !holdToAimActive -> "hold_inactive"
+                                    aimDets.isEmpty() -> "no_targets"
+                                    else -> "no_target_selected"
+                                }
+                                val keepVisualTargets = reason == "hold_inactive" || reason == "aimbot_off"
+                                clearAimSession(reason = reason, clearVisualTargets = !keepVisualTargets, clearLockRay = target == null)
+                            }
+                            triggerController.processTrigger(lastDetections, centerX, centerY, hasDetects.get())
+                        }
+                    } catch (e: Exception) { Log.e(TAG, "推理帧异常: ${e.message}") }
+                    finally { hwBuf?.close(); image.close() }
+                    continue
+                }
+
+                // Local mode: original logic
                 val image = imageReader?.acquireLatestImage()
                 if (image == null) { Thread.yield(); continue }
                 val hwBuf = image.hardwareBuffer
@@ -1214,7 +1438,7 @@ class FloatService : Service() {
                             val cid = result[0].toInt()
                             val sc = result[1]
                             val className = currentClasses[cid] ?: "unknown"
-                            Log.d(TAG, "detect: count=$count, classId=$cid ($className) score=${"%.3f".format(sc)}")
+                            Log.d(TAG, "detect: count=$count, classId=$cid ($className) score=${\"%.3f\".format(sc)}")
                         }
                         var i = 0
                         while (i < count && rawDetections.size < detectionBuffer.size) {
@@ -1349,8 +1573,16 @@ class FloatService : Service() {
             wm.removeView(guiPanel); guiAdded = false; showGui()
         }
 
-        // Resize capture without recreating VirtualDisplay (avoids SecurityException)
-        restartCapture()
+        // Host端直接更新屏幕尺寸，Infer端重启VirtualDisplay
+        if (BuildConfig.FLAVOR == "host") {
+            captureW = screenWidth; captureH = screenHeight
+            centerX = captureW / 2f; centerY = captureH / 2f
+            touchClient?.setResolution(captureW, captureH, deviceAbsMaxX, deviceAbsMaxY)
+            applyTouchOrientationConfig()
+        } else {
+            // Resize capture without recreating VirtualDisplay (avoids SecurityException)
+            restartCapture()
+        }
     }
 
     private fun restartCapture() {

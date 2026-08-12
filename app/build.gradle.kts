@@ -25,6 +25,20 @@ android {
         }
     }
 
+    flavorDimensions += "variant"
+    productFlavors {
+        create("infer") {
+            dimension = "variant"
+            applicationId = "com.yolotouchhelp.aimbot.infer"
+            versionNameSuffix = "-infer"
+        }
+        create("host") {
+            dimension = "variant"
+            applicationId = "com.yolotouchhelp.aimbot.host"
+            versionNameSuffix = "-host"
+        }
+    }
+
     signingConfigs {
         create("release") {
             storeFile = file("release.jks")
@@ -69,11 +83,14 @@ android {
 }
 
 dependencies {
-    implementation(libs.onnxruntime.android)
-    implementation(libs.tensorflow.lite) {
+    // Infer端专属：推理引擎
+    "inferImplementation"(libs.onnxruntime.android)
+    "inferImplementation"(libs.tensorflow.lite) {
         exclude(group = "org.tensorflow", module = "tensorflow-lite-support-api")
     }
-    implementation(libs.tensorflow.lite.gpu)
+    "inferImplementation"(libs.tensorflow.lite.gpu)
+
+    // 共享基础依赖（所有变体都包含）
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -81,8 +98,8 @@ dependencies {
     implementation(libs.androidx.constraintlayout)
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
-

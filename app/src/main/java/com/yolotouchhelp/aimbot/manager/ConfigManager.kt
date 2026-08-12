@@ -68,7 +68,15 @@ data class AppConfig(
     var autoTriggerAdsRange: Float = 180f,
     var touchOrientationMode: Int = 0,
     var useCpuInference: Boolean = false,
-    var cpuThreadCount: Int = 4
+    var cpuThreadCount: Int = 4,
+    var remoteMode: Int = 0, // 0=LOCAL, 1=HOST, 2=CLIENT
+    var remoteClientIp: String = "192.168.1.100",
+    var remoteClientPort: Int = 8765,
+    var remoteHostPort: Int = 8765,
+    var remoteMapAreaX: Int = 0,
+    var remoteMapAreaY: Int = 0,
+    var remoteMapAreaW: Int = 0,
+    var remoteMapAreaH: Int = 0
 )
 
 object ConfigManager {
@@ -152,7 +160,15 @@ object ConfigManager {
                         autoTriggerAdsRange = obj.optDouble("autoTriggerAdsRange", 180.0).toFloat(),
                         touchOrientationMode = obj.optInt("touchOrientationMode", 0),
                         useCpuInference = obj.optBoolean("useCpuInference", false),
-                        cpuThreadCount = obj.optInt("cpuThreadCount", 4)
+                        cpuThreadCount = obj.optInt("cpuThreadCount", 4),
+                        remoteMode = obj.optInt("remoteMode", 0),
+                        remoteClientIp = obj.optString("remoteClientIp", "192.168.1.100"),
+                        remoteClientPort = obj.optInt("remoteClientPort", 8765),
+                        remoteHostPort = obj.optInt("remoteHostPort", 8765),
+                        remoteMapAreaX = obj.optInt("remoteMapAreaX", 0),
+                        remoteMapAreaY = obj.optInt("remoteMapAreaY", 0),
+                        remoteMapAreaW = obj.optInt("remoteMapAreaW", 0),
+                        remoteMapAreaH = obj.optInt("remoteMapAreaH", 0)
                     )
                 }
             }
@@ -227,6 +243,14 @@ object ConfigManager {
                     put("touchOrientationMode", config.touchOrientationMode)
                     put("useCpuInference", config.useCpuInference)
                     put("cpuThreadCount", config.cpuThreadCount)
+                    put("remoteMode", config.remoteMode)
+                    put("remoteClientIp", config.remoteClientIp)
+                    put("remoteClientPort", config.remoteClientPort)
+                    put("remoteHostPort", config.remoteHostPort)
+                    put("remoteMapAreaX", config.remoteMapAreaX)
+                    put("remoteMapAreaY", config.remoteMapAreaY)
+                    put("remoteMapAreaW", config.remoteMapAreaW)
+                    put("remoteMapAreaH", config.remoteMapAreaH)
                 }
                 file.writeText(obj.toString(2))
             }

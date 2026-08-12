@@ -38,6 +38,7 @@ import rikka.shizuku.Shizuku
 import com.yolotouchhelp.aimbot.R
 import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.manager.ConfigManager
+import com.yolotouchhelp.aimbot.remote.RemoteModeManager
 import com.yolotouchhelp.aimbot.service.FloatService
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 import com.yolotouchhelp.aimbot.util.ReleaseInfo
@@ -71,6 +72,9 @@ class MainActivity : AppCompatActivity() {
         private const val GITHUB_URL = "https://github.com/DreamFekk/YoloTouchHelp"
         private const val TELEGRAM_URL = "https://t.me/YoloTouchHelp"
     }
+
+    private val isInfer: Boolean = BuildConfig.FLAVOR == "infer"
+    private val isHost: Boolean = BuildConfig.FLAVOR == "host"
 
     private val stateListener: (Int, String) -> Unit = { state, modelName ->
         runOnUiThread { setAppState(YoloTouchHelpState.entries[state], modelName) }
@@ -311,6 +315,18 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "请先授予悬浮窗权限", Toast.LENGTH_SHORT).show()
             return
         }
+
+        // Host端不需要录屏权限，直接启动服务
+        if (isHost) {
+            if (!isRootAvailable()) {
+                Toast.makeText(this, "主机端需要Root权限", Toast.LENGTH_SHORT).show()
+                return
+            }
+            startService(Intent(this, FloatService::class.java))
+            return
+        }
+
+        // Infer端：检查注入权限并请求录屏
         if (!isInjectorAvailable()) {
             showPermissionHelpDialog()
             return
@@ -331,6 +347,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isShizukuGranted(): Boolean {
+        if (isHost) return false
         return try {
             Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         } catch (_: Exception) {
@@ -350,10 +367,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isInjectorAvailable(): Boolean {
-        return rootAvailable || isShizukuGranted()
+        if (isHost) return isRootAvailable()
+        return isRootAvailable() || isShizukuGranted()
     }
 
     private fun getPrivilegeStatus(): String {
+        if (isHost) {
+            return if (isRootAvailable()) "Root (强制)" else "Root (未授权)"
+        }
         if (rootAvailable) {
             return "Root"
         }
@@ -666,6 +687,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildPagePayload(): JSONObject {
         val model = modelList.getOrNull(selectedModelIndex)
+        val remoteModeLabel = when (ConfigManager.getConfig().remoteMode) {
+            1 -> "主机"
+            2 -> "客户端"
+            else -> "本地"
+        }
+        val remoteStatus = when {
+            ConfigManager.getConfig().remoteMode == 0 -> "未开启"
+            RemoteModeManager.isConnected -> "已连接"
+            else -> "未连接"
+        }
         return JSONObject().apply {
             put("statusText", statusLabel(appState))
             put("running", appState != YoloTouchHelpState.STANDBY)
@@ -674,6 +705,8 @@ class MainActivity : AppCompatActivity() {
             put("privilegeValue", getPrivilegeStatus())
             put("overlayValue", getOverlayStatus())
             put("touchValue", getTouchStatus())
+            put("remoteModeLabel", remoteModeLabel)
+            put("remoteStatus", remoteStatus)
             put("androidVersion", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             put("deviceName", buildDeviceName())
             put("projectIntro", "本项目是个公益开源项目 会持续长久更新")
@@ -1156,6 +1189,42 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun exitApp() {
             runOnUiThread { exitApplication() }
+        }
+
+        @JavascriptInterface
+        fun setRemoteMode(mode: Int, ip: String, port: String, hostPort: String) {
+            runOnUiThread {
+                ConfigManager.updateConfig {
+                    remoteMode = mode
+                    remoteClientIp = ip
+                    remoteClientPort = port.toIntOrNull() ?: 8765
+                    remoteHostPort = hostPort.toIntOrNull() ?: 8765
+                }
+                Toast.makeText(this@MainActivity, "远程模式已保存，重启悬浮窗后生效", Toast.LENGTH_SHORT).show()
+                syncPageState()
+            }
+        }
+
+        @JavascriptInterface
+        fun stopRemoteMode() {
+            runOnUiThread {
+                ConfigManager.updateConfig { remoteMode = 0 }
+                Toast.makeText(this@MainActivity, "远程模式已关闭", Toast.LENGTH_SHORT).show()
+                syncPageState()
+            }
+        }
+
+        @JavascriptInterface
+        fun setRemoteMapArea(x: Int, y: Int, w: Int, h: Int) {
+            runOnUiThread {
+                ConfigManager.updateConfig {
+                    remoteMapAreaX = x
+                    remoteMapAreaY = y
+                    remoteMapAreaW = w
+                    remoteMapAreaH = h
+                }
+                Toast.makeText(this@MainActivity, "映射区域已保存", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

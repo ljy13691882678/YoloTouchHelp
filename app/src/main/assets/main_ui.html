@@ -394,6 +394,10 @@
                                 <span id="statusDot" class="dot"></span>
                                 <span id="touchValue">等待触摸服务</span>
                             </div>
+                            <div class="status-pill" style="margin-top:6px;">
+                                <span id="remoteModeLabel" style="font-size:12px;font-weight:700;color:var(--primary);">本地</span>
+                                <span id="remoteStatus" style="font-size:12px;color:var(--text-sub);">未开启</span>
+                            </div>
                         </div>
                         <div id="backendBadge" class="badge">---</div>
                     </div>
@@ -449,6 +453,60 @@
 
         <section id="settingsPage" class="page">
             <div class="stack">
+                <div>
+                    <h3 class="menu-section-title">远程模式</h3>
+                    <div class="card" style="padding:14px 16px;">
+                        <div class="field-row" style="margin-bottom:10px;">
+                            <div>
+                                <div class="field-label">模式</div>
+                                <select id="remoteModeSelect" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                                    <option value="0">本地</option>
+                                    <option value="1">主机 (接收推理)</option>
+                                    <option value="2">客户端 (推理并发送)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <div class="field-label">客户端IP</div>
+                                <input id="remoteClientIp" type="text" value="192.168.1.100" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                        </div>
+                        <div class="field-row" style="margin-bottom:10px;">
+                            <div>
+                                <div class="field-label">端口</div>
+                                <input id="remotePort" type="number" value="8765" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                            <div>
+                                <div class="field-label">主机端口 (仅主机模式)</div>
+                                <input id="remoteHostPort" type="number" value="8765" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                        </div>
+                        <div class="field-row" style="margin-bottom:4px;">
+                            <div>
+                                <div class="field-label">映射区域X (主机)</div>
+                                <input id="remoteMapX" type="number" value="0" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                            <div>
+                                <div class="field-label">映射区域Y (主机)</div>
+                                <input id="remoteMapY" type="number" value="0" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                        </div>
+                        <div class="field-row" style="margin-bottom:12px;">
+                            <div>
+                                <div class="field-label">映射区域宽 (主机)</div>
+                                <input id="remoteMapW" type="number" value="0" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                            <div>
+                                <div class="field-label">映射区域高 (主机)</div>
+                                <input id="remoteMapH" type="number" value="0" style="margin-top:6px;font-size:14px;padding:8px 10px;border-radius:10px;border:1px solid #e2e8f0;background:#f8fafc;min-width:160px;">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:10px;">
+                            <button class="outline-btn" type="button" onclick="invokeNative('stopRemoteMode')" style="flex:1;">关闭远程模式</button>
+                            <button class="primary-btn" type="button" onclick="saveRemoteMode()" style="flex:1;">保存并应用</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div>
                     <h3 class="menu-section-title">配置</h3>
                     <div class="menu-list">
@@ -567,6 +625,23 @@
         setText("pageTitle", homeActive ? "YoloTouchHelp" : "设置");
     }
 
+    function saveRemoteMode() {
+        const mode = parseInt(document.getElementById("remoteModeSelect").value || "0");
+        const ip = document.getElementById("remoteClientIp").value.trim();
+        const port = document.getElementById("remotePort").value.trim();
+        const hostPort = document.getElementById("remoteHostPort").value.trim();
+        const mapX = parseInt(document.getElementById("remoteMapX").value || "0");
+        const mapY = parseInt(document.getElementById("remoteMapY").value || "0");
+        const mapW = parseInt(document.getElementById("remoteMapW").value || "0");
+        const mapH = parseInt(document.getElementById("remoteMapH").value || "0");
+        if (window.YoloTouchHelpApp && typeof window.YoloTouchHelpApp.setRemoteMode === "function") {
+            window.YoloTouchHelpApp.setRemoteMode(mode, ip, port, hostPort);
+        }
+        if (window.YoloTouchHelpApp && typeof window.YoloTouchHelpApp.setRemoteMapArea === "function") {
+            window.YoloTouchHelpApp.setRemoteMapArea(mapX, mapY, mapW, mapH);
+        }
+    }
+
     window.YoloTouchHelpUi = {
         render(raw) {
             const data = JSON.parse(raw);
@@ -577,6 +652,8 @@
             setText("privilegeValue", data.privilegeValue);
             setText("overlayValue", data.overlayValue);
             setText("touchValue", data.touchValue);
+            setText("remoteModeLabel", data.remoteModeLabel || "本地");
+            setText("remoteStatus", data.remoteStatus || "未开启");
             setText("androidVersion", data.androidVersion);
             setText("deviceName", data.deviceName);
             setText("projectIntro", data.projectIntro);
