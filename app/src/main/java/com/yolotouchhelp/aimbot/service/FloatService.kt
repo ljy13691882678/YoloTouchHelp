@@ -36,6 +36,7 @@ import com.yolotouchhelp.aimbot.injector.InjectorCallback
 import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.inference.KalmanObjectTracker
 import com.yolotouchhelp.aimbot.remote.RemoteModeManager
+import com.yolotouchhelp.aimbot.util.AppFlavor
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 
 class FloatService : Service() {
@@ -181,6 +182,7 @@ class FloatService : Service() {
 
     override fun onCreate() {
         super.onCreate(); wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        AppFlavor.setup(packageName)
         ConfigManager.init(this)
         loadConfigToService()
         createNotificationChannel(); startForeground(1, buildNotification())
@@ -399,7 +401,7 @@ class FloatService : Service() {
         }
 
         // Host端不需要录屏权限，跳过MediaProjection初始化，但需要屏幕尺寸用于坐标映射
-        if (BuildConfig.FLAVOR != "host") {
+        if (!AppFlavor.isHost) {
             val code = ProjectionHolder.resultCode; val data = ProjectionHolder.resultData
             if (data != null) {
                 try {
@@ -536,7 +538,7 @@ class FloatService : Service() {
             }
 
             // Host端强制使用Root，不尝试Shizuku
-            if (BuildConfig.FLAVOR == "host") {
+            if (AppFlavor.isHost) {
                 try {
                     val rootClient = RootInjectorClient(this@FloatService)
                     rootClient.connect(object : InjectorCallback {
@@ -594,7 +596,7 @@ class FloatService : Service() {
 
     private fun toggleRecording(enabled: Boolean) {
         // Host端不支持和录屏
-        if (BuildConfig.FLAVOR == "host") {
+        if (AppFlavor.isHost) {
             Log.w(TAG, "Host端不支持录屏")
             return
         }
@@ -1356,7 +1358,7 @@ class FloatService : Service() {
                         RemoteModeManager.sendDetections(lastDetections, captureW, captureH)
 
                         // Infer端在Client模式下仅发送检测结果，不执行本地自瞄/扳机
-                        if (BuildConfig.FLAVOR == "infer") {
+                        if (AppFlavor.isInfer) {
                             // 保留检测框显示，跳过自瞄和扳机
                             mainHandler.post {
                                 overlayView.showLockRay = showLockRay
@@ -1574,7 +1576,7 @@ class FloatService : Service() {
         }
 
         // Host端直接更新屏幕尺寸，Infer端重启VirtualDisplay
-        if (BuildConfig.FLAVOR == "host") {
+        if (AppFlavor.isHost) {
             captureW = screenWidth; captureH = screenHeight
             centerX = captureW / 2f; centerY = captureH / 2f
             touchClient?.setResolution(captureW, captureH, deviceAbsMaxX, deviceAbsMaxY)

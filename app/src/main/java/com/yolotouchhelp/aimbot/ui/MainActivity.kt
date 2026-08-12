@@ -40,6 +40,7 @@ import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.manager.ConfigManager
 import com.yolotouchhelp.aimbot.remote.RemoteModeManager
 import com.yolotouchhelp.aimbot.service.FloatService
+import com.yolotouchhelp.aimbot.util.AppFlavor
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 import com.yolotouchhelp.aimbot.util.ReleaseInfo
 import com.yolotouchhelp.aimbot.util.UpdateChecker
@@ -73,8 +74,8 @@ class MainActivity : AppCompatActivity() {
         private const val TELEGRAM_URL = "https://t.me/YoloTouchHelp"
     }
 
-    private val isInfer: Boolean = BuildConfig.FLAVOR == "infer"
-    private val isHost: Boolean = BuildConfig.FLAVOR == "host"
+    private val isInfer: Boolean = AppFlavor.isInfer
+    private val isHost: Boolean = AppFlavor.isHost
 
     private val stateListener: (Int, String) -> Unit = { state, modelName ->
         runOnUiThread { setAppState(YoloTouchHelpState.entries[state], modelName) }
@@ -150,6 +151,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppFlavor.setup(packageName)
         ConfigManager.init(this)
         loadModelsFromJson()
 
