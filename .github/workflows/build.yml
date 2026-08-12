@@ -1,0 +1,43 @@
+name: Build Dual APKs
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission to gradlew
+        run: chmod +x gradlew
+
+      - name: Build Infer Release APK
+        run: ./gradlew assembleInferRelease
+
+      - name: Build Host Release APK
+        run: ./gradlew assembleHostRelease
+
+      - name: Upload Infer APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-infer-release
+          path: app/build/outputs/apk/infer/release/app-infer-release.apk
+          retention-days: 7
+
+      - name: Upload Host APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-host-release
+          path: app/build/outputs/apk/host/release/app-host-release.apk
+          retention-days: 7
