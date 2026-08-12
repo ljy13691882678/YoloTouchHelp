@@ -44,7 +44,8 @@
             android:authorities="${applicationId}.shizuku"
             android:enabled="false"
             android:exported="false"
-            android:multiprocess="false" />
+            android:multiprocess="false"
+            tools:replace="android:enabled,android:exported" />
 
         <service
             android:name=".service.FloatService"
