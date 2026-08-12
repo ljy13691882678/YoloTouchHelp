@@ -1438,7 +1438,7 @@ class FloatService : Service() {
                             val cid = result[0].toInt()
                             val sc = result[1]
                             val className = currentClasses[cid] ?: "unknown"
-                            Log.d(TAG, "detect: count=$count, classId=$cid ($className) score=${\"%.3f\".format(sc)}")
+                            Log.d(TAG, "detect: count=$count, classId=$cid ($className) score=${"%.3f".format(sc)}")
                         }
                         var i = 0
                         while (i < count && rawDetections.size < detectionBuffer.size) {
