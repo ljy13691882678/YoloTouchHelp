@@ -1203,6 +1203,41 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        fun showRemoteInfo() {
+            runOnUiThread {
+                val cfg = ConfigManager.getConfig()
+                val ip = com.yolotouchhelp.aimbot.remote.RemoteInferenceServer.lanIpv4()
+                val sb = StringBuilder()
+                sb.append("手机局域网 IP: $ip\n\n")
+                sb.append("服务端端口: ${cfg.serverModePort}\n")
+                sb.append("服务端模式: ${if (cfg.serverModeEnabled) "已启用" else "未启用"}\n\n")
+                sb.append("平板推理目标: ${if (cfg.remoteInferenceServerIp.isBlank()) "(未设置)" else cfg.remoteInferenceServerIp + ":" + cfg.remoteInferenceServerPort}\n")
+                sb.append("平板推理开关: ${if (cfg.remoteInferenceEnabled) "已启用" else "未启用"}\n")
+                sb.append("目标 ROI 尺寸: ${cfg.remoteInferenceTargetSize}\n")
+                sb.append("传输帧率: ${cfg.remoteInferenceFrameRate}Hz")
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("远程推理")
+                    .setMessage(sb.toString())
+                    .setPositiveButton("确定", null)
+                    .setNeutralButton("复制信息") { _, _ ->
+                        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("remote", sb.toString()))
+                        Toast.makeText(this@MainActivity, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+            }
+        }
+
+        @JavascriptInterface
+        fun toggleServerMode() {
+            runOnUiThread {
+                val cur = ConfigManager.getConfig().serverModeEnabled
+                ConfigManager.updateConfig { serverModeEnabled = !cur }
+                Toast.makeText(this@MainActivity, if (!cur) "已开启服务端模式（请在悬浮窗面板中查看 IP）" else "已关闭服务端模式", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        @JavascriptInterface
         fun exitApp() {
             runOnUiThread { exitApplication() }
         }

@@ -36,6 +36,8 @@ import com.yolotouchhelp.aimbot.injector.InjectorCallback
 import com.yolotouchhelp.aimbot.inference.JniCallBack
 import com.yolotouchhelp.aimbot.inference.KalmanObjectTracker
 import com.yolotouchhelp.aimbot.remote.RemoteModeManager
+import com.yolotouchhelp.aimbot.remote.RemoteInferenceClient
+import com.yolotouchhelp.aimbot.remote.RemoteInferenceServer
 import com.yolotouchhelp.aimbot.util.AppFlavor
 import com.yolotouchhelp.aimbot.util.ProjectionHolder
 
@@ -88,6 +90,7 @@ class FloatService : Service() {
     private val inferRunning = AtomicBoolean(false)
     val aimbotOn = AtomicBoolean(false)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val statsUpdaterRunning = AtomicBoolean(false)
 
     private val detectionBuffer = Array(20) { DetectionInfo(RectF(), -1, "") }
     private var lastDetections: List<DetectionInfo> = emptyList()
@@ -387,6 +390,8 @@ class FloatService : Service() {
         }
         if (intent?.action == "STOP") {
             RemoteModeManager.cleanup()
+            RemoteInferenceServer.stop()
+            RemoteInferenceClient.release()
             if (mediaRecorder != null) toggleRecording(false)
             inferRunning.set(false)
             executor.shutdown()
@@ -429,6 +434,16 @@ class FloatService : Service() {
             RemoteModeManager.startHost()
         } else if (RemoteModeManager.mode == RemoteModeManager.Mode.CLIENT) {
             RemoteModeManager.startClient()
+        }
+
+        // 服务端模式（手机开启）：在后台启动 RemoteInferenceServer
+        if (cfg.serverModeEnabled && !AppFlavor.isHost) {
+            startRemoteInferenceServer(cfg)
+        }
+
+        // 远程推理模式（平板→手机）：在 onStartCommand 先做连接预热
+        if (cfg.remoteInferenceEnabled && AppFlavor.isHost) {
+            prepareRemoteInferenceClient(cfg)
         }
 
         setupBall(); setupOverlay(); initTouchInjector()
@@ -721,6 +736,148 @@ class FloatService : Service() {
         touchDisplayView!!.dotRadius = dp(guiPanel.aimTouchSize).toFloat()
         wm.addView(touchDisplayView, p); touchDisplayAdded = true
         touchDisplayView!!.alpha = 0f
+    }
+
+    /**
+     * 启动手机端推理服务（服务端模式）。
+     * 在 executor 后台线程上加载模型、绑定端口，避免阻塞主线程。
+     */
+    private fun startRemoteInferenceServer(cfg: com.yolotouchhelp.aimbot.manager.AppConfig) {
+        val port = cfg.serverModePort
+        val modelIdx = cfg.serverModeModelIndex.coerceIn(0, ProjectionHolder.modelList.size - 1)
+        val entry = ProjectionHolder.modelList.getOrNull(modelIdx)
+        if (entry == null) {
+            Log.e(TAG, "serverMode: invalid modelIndex=$modelIdx")
+            return
+        }
+        // 拷贝模型到 filesDir（如果还没有）
+        val modelFile = entry.sourcePath?.let { java.io.File(it) } ?: java.io.File(applicationContext.filesDir, entry.filename)
+        if (entry.sourcePath == null && !modelFile.exists()) {
+            modelFile.parentFile?.mkdirs()
+            try {
+                assets.open(entry.filename).use { i -> java.io.FileOutputStream(modelFile).use { o -> i.copyTo(o) } }
+            } catch (e: Exception) {
+                Log.e(TAG, "copy model for server failed: ${e.message}")
+                return
+            }
+        }
+        val modelPath = modelFile.absolutePath
+        val inputSize = entry.inputSize
+        val classesJson = org.json.JSONObject(entry.classes.mapKeys { it.key.toString() }).toString()
+
+        RemoteInferenceServer.setOnStateChangeListener { state, msg ->
+            Log.i(TAG, "RemoteInfServer state=$state $msg")
+            ProjectionHolder.updateState(if (state == RemoteInferenceServer.STATE_CONNECTED) 2 else 1, msg)
+        }
+        executor.execute {
+            Log.i(TAG, "starting RemoteInferenceServer on :$port model=${entry.filename}")
+            val ok = RemoteInferenceServer.start(
+                port = port,
+                modelPath = modelPath,
+                inputSize = inputSize,
+                classesJson = classesJson,
+                confidence = cfg.confidence,
+                useCpu = cfg.useCpuInference,
+                cpuThreads = cfg.cpuThreadCount
+            )
+            if (!ok) Log.e(TAG, "RemoteInferenceServer start failed: ${RemoteInferenceServer.lastError()}")
+        }
+    }
+
+    /**
+     * 平板端：预热远程推理客户端（连接 + 握手 + 编码器初始化）。
+     * 失败时不立即退出，由 infer loop 在调用 detect() 时再次尝试。
+     */
+    private fun prepareRemoteInferenceClient(cfg: com.yolotouchhelp.aimbot.manager.AppConfig) {
+        if (cfg.remoteInferenceServerIp.isBlank()) {
+            Log.w(TAG, "remoteInferenceServerIp is blank, skip prepare")
+            return
+        }
+        executor.execute {
+            val entry = ProjectionHolder.modelList.getOrNull(ProjectionHolder.selectedModelIndex)
+            val modelName = entry?.filename ?: "yolov8n.tflite"
+            val inputSize = entry?.inputSize ?: 320
+            val classesJson = entry?.classes?.let { org.json.JSONObject(it.mapKeys { k -> k.key.toString() }).toString() } ?: "{}"
+            val fps = cfg.remoteInferenceFrameRate.coerceIn(30, 144)
+            val targetSize = cfg.remoteInferenceTargetSize.coerceIn(160, 640)
+            Log.i(TAG, "connecting to remote inference ${cfg.remoteInferenceServerIp}:${cfg.remoteInferenceServerPort} fps=$fps size=$targetSize")
+            val ok = RemoteInferenceClient.init(
+                ip = cfg.remoteInferenceServerIp,
+                port = cfg.remoteInferenceServerPort,
+                modelName = modelName,
+                inputSize = inputSize,
+                classesJson = classesJson,
+                confidence = cfg.confidence,
+                useCpu = cfg.useCpuInference,
+                cpuThreads = cfg.cpuThreadCount,
+                frameRate = fps,
+                targetWidth = targetSize,
+                targetHeight = targetSize
+            )
+            if (ok) {
+                ProjectionHolder.updateState(2, "remote:${RemoteInferenceClient.backend()}")
+                Log.i(TAG, "remote inference client ready, backend=${RemoteInferenceClient.backend()}")
+            } else {
+                Log.w(TAG, "remote inference client init failed, will retry in infer loop")
+            }
+        }
+    }
+
+    /**
+     * 启动后台统计刷新线程：每 1s 把服务端/客户端状态/RTT 推到 UI。
+     * 多次调用安全（内部去重）。
+     */
+    private fun startRemoteStatsUpdater() {
+        if (statsUpdaterRunning.getAndSet(true)) return
+        Thread({
+            var lastFrameId = -1
+            var lastFpsT = System.currentTimeMillis()
+            var framesInWindow = 0
+            try {
+                while (statsUpdaterRunning.get()) {
+                    try { Thread.sleep(500) } catch (_: Exception) { break }
+                    val now = System.currentTimeMillis()
+                    val cfg = ConfigManager.getConfig()
+                    val cur = RemoteInferenceClient.lastSendFrameId()
+                    if (cur != lastFrameId) {
+                        framesInWindow += (cur - lastFrameId).coerceAtLeast(0)
+                        lastFrameId = cur
+                    }
+                    val elapsed = now - lastFpsT
+                    val fps: Int = if (elapsed >= 1000) {
+                        val f = framesInWindow * 1000 / elapsed
+                        framesInWindow = 0
+                        lastFpsT = now
+                        f
+                    } else 0
+
+                    val serverStatus: String = if (cfg.serverModeEnabled) {
+                        when (RemoteInferenceServer.state()) {
+                            RemoteInferenceServer.STATE_LISTENING -> "listening :${RemoteInferenceServer.currentPort()}"
+                            RemoteInferenceServer.STATE_CONNECTED -> "client ${RemoteInferenceServer.clientAddress()} connected"
+                            RemoteInferenceServer.STATE_ERROR -> "ERR: ${RemoteInferenceServer.lastError()}"
+                            else -> "stopped"
+                        }
+                    } else ""
+                    val clientStatus: String = if (cfg.remoteInferenceEnabled) {
+                        if (RemoteInferenceClient.isConnected()) "connected (${RemoteInferenceClient.backend()})" else "disconnected"
+                    } else ""
+                    val rtt: Long = if (cfg.remoteInferenceEnabled) RemoteInferenceClient.lastRtt() else -1L
+                    val clientFps: Int = if (cfg.remoteInferenceEnabled) fps else 0
+
+                    mainHandler.post {
+                        if (!guiAdded) return@post
+                        guiPanel.remoteServerStatus = serverStatus
+                        guiPanel.remoteClientStatus = clientStatus
+                        guiPanel.remoteClientRtt = rtt
+                        guiPanel.remoteClientFps = clientFps
+                        guiPanel.pushState()
+                    }
+                }
+            } finally {
+                statsUpdaterRunning.set(false)
+            }
+        }, "RemoteStatsUpdater").apply { isDaemon = true; start() }
     }
 
     private fun loadModel(filename: String) {
@@ -1100,6 +1257,73 @@ class FloatService : Service() {
         }
         guiPanel.onAreaSettingsToggle = { showAreaSettings() }
 
+        // ---- 远程推理 UI 回调 ----
+        guiPanel.onRemoteInferenceEnabledChanged = { enabled ->
+            ConfigManager.updateConfig { remoteInferenceEnabled = enabled }
+            if (enabled) {
+                // 重新发起连接/预热编码器
+                val cfg = ConfigManager.getConfig()
+                prepareRemoteInferenceClient(cfg)
+                startRemoteStatsUpdater()
+            } else {
+                executor.execute { RemoteInferenceClient.release() }
+            }
+            guiPanel.pushState()
+        }
+        guiPanel.onRemoteInferenceServerIpChanged = { ip ->
+            ConfigManager.updateConfig { remoteInferenceServerIp = ip }
+        }
+        guiPanel.onRemoteInferenceServerPortChanged = { port ->
+            ConfigManager.updateConfig { remoteInferenceServerPort = port }
+        }
+        guiPanel.onRemoteInferenceTargetSizeChanged = { size ->
+            ConfigManager.updateConfig { remoteInferenceTargetSize = size }
+            // 编码器分辨率变化 → 重连
+            val cfg = ConfigManager.getConfig()
+            if (cfg.remoteInferenceEnabled) prepareRemoteInferenceClient(cfg)
+        }
+        guiPanel.onRemoteInferenceFrameRateChanged = { fps ->
+            ConfigManager.updateConfig { remoteInferenceFrameRate = fps }
+            val cfg = ConfigManager.getConfig()
+            if (cfg.remoteInferenceEnabled) prepareRemoteInferenceClient(cfg)
+        }
+        guiPanel.onServerModeEnabledChanged = { enabled ->
+            ConfigManager.updateConfig { serverModeEnabled = enabled }
+            if (enabled) {
+                val cfg = ConfigManager.getConfig()
+                startRemoteInferenceServer(cfg)
+            } else {
+                RemoteInferenceServer.stop()
+            }
+            guiPanel.pushState()
+        }
+        guiPanel.onServerModePortChanged = { port ->
+            ConfigManager.updateConfig { serverModePort = port }
+        }
+        guiPanel.onServerModeModelIndexChanged = { idx ->
+            ConfigManager.updateConfig { serverModeModelIndex = idx }
+        }
+        guiPanel.onServerModeAutoSwitchChanged = { auto ->
+            ConfigManager.updateConfig { serverModeAutoSwitchToServer = auto }
+        }
+        guiPanel.onServerActionRestart = {
+            RemoteInferenceServer.stop()
+            val cfg = ConfigManager.getConfig()
+            if (cfg.serverModeEnabled) startRemoteInferenceServer(cfg)
+        }
+        // 初始化 UI 字段（从 ConfigManager 读入）
+        val cfg0 = ConfigManager.getConfig()
+        guiPanel.remoteInferenceEnabled = cfg0.remoteInferenceEnabled
+        guiPanel.remoteInferenceServerIp = cfg0.remoteInferenceServerIp
+        guiPanel.remoteInferenceServerPort = cfg0.remoteInferenceServerPort
+        guiPanel.remoteInferenceTargetSize = cfg0.remoteInferenceTargetSize
+        guiPanel.remoteInferenceFrameRate = cfg0.remoteInferenceFrameRate
+        guiPanel.serverModeEnabled = cfg0.serverModeEnabled
+        guiPanel.serverModePort = cfg0.serverModePort
+        guiPanel.serverModeModelIndex = cfg0.serverModeModelIndex
+        guiPanel.serverModeAutoSwitch = cfg0.serverModeAutoSwitchToServer
+        startRemoteStatsUpdater()
+
         overlayView.rangeRadius = guiPanel.range; JniCallBack.setConfidence(guiPanel.confidence)
         setupTriggerOverlay()
         setupTouchDisplayView()
@@ -1406,6 +1630,89 @@ class FloatService : Service() {
                     continue
                 }
 
+                // ---- 远程推理模式（平板→手机 H.264 传输）----
+                if (ConfigManager.getConfig().remoteInferenceEnabled) {
+                    val image = imageReader?.acquireLatestImage()
+                    if (image == null) { Thread.yield(); continue }
+                    val hwBuf = image.hardwareBuffer
+                    try {
+                        hasDetects.set(false)
+                        val plane = image.planes[0]; val buffer = plane.buffer
+                        val regionW = cachedRangePx * 2; val regionH = cachedRangePx * 2
+                        val offsetX = (captureW - regionW) / 2; val offsetY = (captureH - regionH) / 2
+
+                        // 通过远程推理客户端发送帧并接收检测结果
+                        val result = RemoteInferenceClient.detect(
+                            buffer, offsetX, offsetY, regionW, regionH,
+                            captureW, captureH, plane.rowStride, plane.pixelStride
+                        )
+
+                        val rawDetections = mutableListOf<DetectionInfo>()
+                        if (result != null) {
+                            val count = result.size / 6
+                            var i = 0
+                            while (i < count && rawDetections.size < detectionBuffer.size) {
+                                val cid = result[i * 6].toInt()
+                                val score = result[i * 6 + 1]
+                                val rect = RectF(
+                                    result[i * 6 + 2] * captureW,
+                                    result[i * 6 + 3] * captureH,
+                                    result[i * 6 + 4] * captureW,
+                                    result[i * 6 + 5] * captureH
+                                )
+                                rawDetections += DetectionInfo(rect, cid, currentClasses[cid] ?: "cls$cid", score = score)
+                                i++
+                            }
+                        }
+
+                        lastDetections = if (kalmanPredictEnabled) {
+                            kalmanTracker.update(rawDetections, SystemClock.elapsedRealtime())
+                        } else {
+                            kalmanTracker.reset()
+                            rawDetections
+                        }
+                        hasDetects.set(lastDetections.isNotEmpty())
+                        mainHandler.post { overlayView.updateDetections(lastDetections) }
+
+                        val holdToAimActive = if (aimHoldEnabled) {
+                            val adsAimTrigger = triggerEnabled && autoTriggerAdsEnabled
+                            if (adsAimTrigger) true else {
+                                val fingerOnTrigger = touchClient?.isFingerInTriggerZone() ?: false
+                                val fingerOnAds = touchClient?.isFingerInAdsZone() ?: false
+                                fingerOnTrigger || fingerOnAds
+                            }
+                        } else true
+
+                        val aimDets = if (aimClasses.isEmpty()) lastDetections
+                            else lastDetections.filter { it.classId in aimClasses }
+
+                        val target = if (aimDets.isNotEmpty()) {
+                            aimController.selectTarget(aimDets, centerX, centerY)
+                        } else null
+                        val rayPoint = if (showLockRay) aimController.currentLockRayPoint() else null
+                        mainHandler.post {
+                            overlayView.showLockRay = showLockRay
+                            overlayView.updateLockRay(rayPoint?.first, rayPoint?.second)
+                        }
+
+                        if (aimbotOn.get() && target != null && holdToAimActive) {
+                            aimController.executeAiming(target.aimX, target.aimY, centerX, centerY)
+                        } else {
+                            val reason = when {
+                                !aimbotOn.get() -> "aimbot_off"
+                                !holdToAimActive -> "hold_inactive"
+                                aimDets.isEmpty() -> "no_targets"
+                                else -> "no_target_selected"
+                            }
+                            val keepVisualTargets = reason == "hold_inactive" || reason == "aimbot_off"
+                            clearAimSession(reason = reason, clearVisualTargets = !keepVisualTargets, clearLockRay = target == null)
+                        }
+                        triggerController.processTrigger(lastDetections, centerX, centerY, hasDetects.get())
+                    } catch (e: Exception) { Log.e(TAG, "远程推理帧异常: ${e.message}") }
+                    finally { hwBuf?.close(); image.close() }
+                    continue
+                }
+
                 // Local mode: original logic
                 val image = imageReader?.acquireLatestImage()
                 if (image == null) { Thread.yield(); continue }
@@ -1655,7 +1962,10 @@ class FloatService : Service() {
 
     override fun onDestroy() {
         if (mediaRecorder != null) toggleRecording(false)
-        inferRunning.set(false); executor.shutdown()
+        inferRunning.set(false); statsUpdaterRunning.set(false)
+        executor.shutdown()
+        try { RemoteInferenceServer.stop() } catch (_: Exception) {}
+        try { RemoteInferenceClient.release() } catch (_: Exception) {}
         touchClient?.stopGeteventListener()
         touchClient?.destroyRemote()
         touchClient?.disconnect()

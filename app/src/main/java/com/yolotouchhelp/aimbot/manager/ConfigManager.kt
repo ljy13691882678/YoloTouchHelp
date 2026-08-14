@@ -76,7 +76,18 @@ data class AppConfig(
     var remoteMapAreaX: Int = 0,
     var remoteMapAreaY: Int = 0,
     var remoteMapAreaW: Int = 0,
-    var remoteMapAreaH: Int = 0
+    var remoteMapAreaH: Int = 0,
+    // ---- 远程推理（平板→手机）----
+    var remoteInferenceEnabled: Boolean = false,   // 平板端：是否用手机推理
+    var remoteInferenceServerIp: String = "",      // 手机 IP
+    var remoteInferenceServerPort: Int = 9876,     // 端口
+    var remoteInferenceTargetSize: Int = 320,       // ROI 编码尺寸（默认 320×320）
+    var remoteInferenceFrameRate: Int = 120,        // 发送帧率（60/120/144）
+    // ---- 服务端模式（手机开启）----
+    var serverModeEnabled: Boolean = false,         // 手机端：是否启动推理服务端
+    var serverModePort: Int = 9876,
+    var serverModeModelIndex: Int = 0,
+    var serverModeAutoSwitchToServer: Boolean = true  // 服务端模式下停用本地推理/录屏
 )
 
 object ConfigManager {
@@ -168,7 +179,18 @@ object ConfigManager {
                         remoteMapAreaX = obj.optInt("remoteMapAreaX", 0),
                         remoteMapAreaY = obj.optInt("remoteMapAreaY", 0),
                         remoteMapAreaW = obj.optInt("remoteMapAreaW", 0),
-                        remoteMapAreaH = obj.optInt("remoteMapAreaH", 0)
+                        remoteMapAreaH = obj.optInt("remoteMapAreaH", 0),
+                        // ---- 远程推理 ----
+                        remoteInferenceEnabled = obj.optBoolean("remoteInferenceEnabled", false),
+                        remoteInferenceServerIp = obj.optString("remoteInferenceServerIp", ""),
+                        remoteInferenceServerPort = obj.optInt("remoteInferenceServerPort", 9876),
+                        remoteInferenceTargetSize = obj.optInt("remoteInferenceTargetSize", 320),
+                        remoteInferenceFrameRate = obj.optInt("remoteInferenceFrameRate", 120),
+                        // ---- 服务端模式 ----
+                        serverModeEnabled = obj.optBoolean("serverModeEnabled", false),
+                        serverModePort = obj.optInt("serverModePort", 9876),
+                        serverModeModelIndex = obj.optInt("serverModeModelIndex", 0),
+                        serverModeAutoSwitchToServer = obj.optBoolean("serverModeAutoSwitchToServer", true)
                     )
                 }
             }
@@ -251,6 +273,17 @@ object ConfigManager {
                     put("remoteMapAreaY", config.remoteMapAreaY)
                     put("remoteMapAreaW", config.remoteMapAreaW)
                     put("remoteMapAreaH", config.remoteMapAreaH)
+                    // ---- 远程推理 ----
+                    put("remoteInferenceEnabled", config.remoteInferenceEnabled)
+                    put("remoteInferenceServerIp", config.remoteInferenceServerIp)
+                    put("remoteInferenceServerPort", config.remoteInferenceServerPort)
+                    put("remoteInferenceTargetSize", config.remoteInferenceTargetSize)
+                    put("remoteInferenceFrameRate", config.remoteInferenceFrameRate)
+                    // ---- 服务端模式 ----
+                    put("serverModeEnabled", config.serverModeEnabled)
+                    put("serverModePort", config.serverModePort)
+                    put("serverModeModelIndex", config.serverModeModelIndex)
+                    put("serverModeAutoSwitchToServer", config.serverModeAutoSwitchToServer)
                 }
                 file.writeText(obj.toString(2))
             }

@@ -382,6 +382,46 @@
             line-height: 1;
         }
 
+        .text-input {
+            flex: 0 0 130px;
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: 13px;
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.85);
+            font-family: inherit;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+        }
+
+        .status-card {
+            border-radius: 12px;
+            background: rgba(99, 102, 241, 0.08);
+            padding: 10px 12px;
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-main);
+        }
+
+        .status-row > span:last-child {
+            font-weight: 600;
+            color: var(--primary);
+            font-variant-numeric: tabular-nums;
+        }
+
         .empty {
             font-size: 12px;
             color: var(--text-sub);
@@ -417,7 +457,7 @@
     </div>
 
     <script>
-        const TAB_LABELS = ["自瞄", "扳机", "模型", "系统"];
+        const TAB_LABELS = ["自瞄", "扳机", "模型", "系统", "远推"];
         let state = {
             activeTab: 0,
             modelRunning: false,
@@ -501,6 +541,11 @@
         function setFloat(key, value) {
             state[key] = value;
             host("setFloat", key, parseFloat(value));
+        }
+
+        function setString(key, value) {
+            state[key] = value;
+            host("setString", key, String(value ?? ""));
         }
 
         function updateRangeValue(id, value, format) {
@@ -867,6 +912,78 @@
             `;
         }
 
+        function renderRemoteTab() {
+            const fps = Number(state.remoteInferenceFrameRate ?? 120);
+            const size = Number(state.remoteInferenceTargetSize ?? 320);
+            const port = Number(state.remoteInferenceServerPort ?? 9876);
+            const serverPort = Number(state.serverModePort ?? 9876);
+            const rtt = Number(state.remoteClientRtt ?? -1);
+            const rttText = rtt >= 0 ? `${rtt}ms` : "--";
+            const clientFps = Number(state.remoteClientFps ?? 0);
+            const lanIp = state.lanIpv4Hint || "?";
+            const serverStatus = state.remoteServerStatus || "未启动";
+            const clientStatus = state.remoteClientStatus || "未连接";
+            const modelItems = (Array.isArray(state.modelNames) ? state.modelNames : []).map((name, i) => ({
+                label: name || `模型${i + 1}`,
+                value: i
+            }));
+            if (modelItems.length === 0) modelItems.push({ label: "无可用模型", value: 0 });
+
+            return `
+                <div class="section">
+                    <div class="section-title">平板端 → 手机推理</div>
+                    ${switchRow("启用远程推理", "remoteInferenceEnabled", state.remoteInferenceEnabled, "开启后画面通过 H.264 编码发送到同局域网手机，回传检测结果")}
+                    <div class="setting-row">
+                        <div class="setting-main">
+                            <div class="setting-title">手机 IP</div>
+                            <div class="setting-desc">本机局域网 IP：${escapeHtml(lanIp)}</div>
+                        </div>
+                        <input class="text-input" type="text" inputmode="decimal"
+                            value="${escapeHtml(state.remoteInferenceServerIp ?? '')}"
+                            placeholder="192.168.x.x"
+                            onchange="setString('remoteInferenceServerIp', this.value)">
+                    </div>
+                    ${sliderRow({ label: "手机端口", key: "remoteInferenceServerPort", value: port, min: 1024, max: 65535, step: 1, type: "int", format: "int" })}
+                    ${sliderRow({ label: "ROI 编码尺寸", key: "remoteInferenceTargetSize", value: size, min: 160, max: 640, step: 32, type: "int", format: "px", note: "建议 256~384，值越小带宽越低" })}
+                    <div class="slider-block">
+                        <div class="slider-head">
+                            <div class="slider-title">发送帧率</div>
+                            <div class="slider-value" id="value_remote_fps_main">${formatValue("int", fps)}帧</div>
+                        </div>
+                        <input class="slider-input" type="range"
+                            min="30" max="144" step="1" value="${fps}"
+                            oninput="updateRangeValue('value_remote_fps_main', this.value, 'int'); state.remoteInferenceFrameRate = parseInt(this.value, 10);"
+                            onchange="setInt('remoteInferenceFrameRate', this.value)">
+                        <div class="section-note">支持 30 / 60 / 90 / 120 / 144Hz 传输</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="status-row"><span>连接状态</span><span>${escapeHtml(clientStatus)}</span></div>
+                        <div class="status-row"><span>往返延迟</span><span>${escapeHtml(rttText)}</span></div>
+                        <div class="status-row"><span>实测帧率</span><span>${clientFps > 0 ? clientFps + ' FPS' : '--'}</span></div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">手机端推理服务</div>
+                    ${switchRow("启用服务端模式", "serverModeEnabled", state.serverModeEnabled, "在本机作为推理服务端，平板通过局域网连接")}
+                    ${switchRow("服务端模式下停用本地推理", "serverModeAutoSwitch", state.serverModeAutoSwitch, "推荐开启，避免双端同时录屏/推理造成冲突")}
+                    ${sliderRow({ label: "服务端口", key: "serverModePort", value: serverPort, min: 1024, max: 65535, step: 1, type: "int", format: "int" })}
+                    ${segmentedRow("服务端模型", "serverModeModelIndex", Number(state.serverModeModelIndex ?? 0), modelItems)}
+                    <div class="status-card">
+                        <div class="status-row"><span>状态</span><span>${escapeHtml(serverStatus)}</span></div>
+                        <div class="status-row"><span>绑定 IP</span><span>${escapeHtml(lanIp)}:${serverPort}</span></div>
+                    </div>
+                    <button class="action-row" type="button" onclick="runAction('restartRemoteServer')">
+                        <div class="setting-main">
+                            <div class="setting-title">重启服务端</div>
+                            <div class="setting-desc">修改端口/模型后，重新加载并绑定</div>
+                        </div>
+                        <div class="action-arrow">›</div>
+                    </button>
+                </div>
+            `;
+        }
+
         function renderSystemTab() {
             return `
                 <div class="section">
@@ -916,8 +1033,11 @@
                     html = renderModelTab();
                     break;
                 case 3:
-                default:
                     html = renderSystemTab();
+                    break;
+                case 4:
+                default:
+                    html = renderRemoteTab();
                     break;
             }
             root.innerHTML = html;
@@ -925,7 +1045,7 @@
 
         function renderState(nextState) {
             state = Object.assign({}, state, nextState || {});
-            if (typeof state.activeTab !== "number" || state.activeTab < 0 || state.activeTab > 3) {
+            if (typeof state.activeTab !== "number" || state.activeTab < 0 || state.activeTab > 4) {
                 state.activeTab = 0;
             }
             renderHeader();

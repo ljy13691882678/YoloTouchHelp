@@ -23,13 +23,14 @@ import java.io.IOException
  *   0x07 ERROR           服务端 → 客户端  (UTF-8 错误信息)
  *   0x08 CONFIG          客户端 → 服务端  (运行时配置：conf/forceCpu/threads)
  *
- * FRAME payload (固定 25B 头 + 图像):
+ * FRAME payload (固定 26B 头 + 图像):
  *   [4B frame_id]
  *   [2B offset_x][2B offset_y]
  *   [2B region_w][2B region_h]
  *   [2B capture_w][2B capture_h]
  *   [2B row_stride][2B pixel_stride]
- *   [1B jpeg_quality] (0 = 原始 RGBA, 1-100 = JPEG)
+ *   [1B codec]        (0=raw RGBA, 1=JPEG, 2=H.264 Annex-B)
+ *   [1B flags]        (bit0=keyframe, bit1=末尾帧, bit2-7=reserved)
  *   [4B image_data_length]
  *   [N B image_data]
  *
@@ -62,13 +63,23 @@ object RemoteInferenceProtocol {
     const val MAX_FRAME_SIZE = 3 * 1024 * 1024    // 单帧图片上限 3MB
     const val HEADER_SIZE = 4 + 1                  // 长度 + 类型
 
+    // Codec
+    const val CODEC_RAW_RGBA: Byte = 0
+    const val CODEC_JPEG: Byte = 1
+    const val CODEC_H264: Byte = 2
+
+    // Frame flags
+    const val FLAG_KEYFRAME: Byte = 0x01
+    const val FLAG_EOS: Byte = 0x02
+
     data class FrameMeta(
         val frameId: Int,
         val offsetX: Int, val offsetY: Int,
         val regionW: Int, val regionH: Int,
         val captureW: Int, val captureH: Int,
         val rowStride: Int, val pixelStride: Int,
-        val jpegQuality: Int,
+        val codec: Byte,                // 0=raw RGBA, 1=JPEG, 2=H.264
+        val flags: Byte,                // bit0=keyframe, bit1=eos
         val imageData: ByteArray
     ) {
         override fun equals(other: Any?): Boolean {
@@ -79,7 +90,7 @@ object RemoteInferenceProtocol {
                     regionW == other.regionW && regionH == other.regionH &&
                     captureW == other.captureW && captureH == other.captureH &&
                     rowStride == other.rowStride && pixelStride == other.pixelStride &&
-                    jpegQuality == other.jpegQuality &&
+                    codec == other.codec && flags == other.flags &&
                     imageData.contentEquals(other.imageData)
         }
         override fun hashCode(): Int = frameId
@@ -128,7 +139,8 @@ object RemoteInferenceProtocol {
         dos.writeShort(meta.captureH)
         dos.writeShort(meta.rowStride)
         dos.writeShort(meta.pixelStride)
-        dos.writeByte(meta.jpegQuality)
+        dos.writeByte(meta.codec.toInt())
+        dos.writeByte(meta.flags.toInt())
         dos.writeInt(meta.imageData.size)
         dos.write(meta.imageData)
         return baos.toByteArray()
@@ -145,7 +157,8 @@ object RemoteInferenceProtocol {
         val captureH = dis.readShort().toInt()
         val rowStride = dis.readShort().toInt()
         val pixelStride = dis.readShort().toInt()
-        val jpegQuality = dis.readByte().toInt()
+        val codec = dis.readByte()
+        val flags = dis.readByte()
         val imageLen = dis.readInt()
         if (imageLen < 0 || imageLen > MAX_FRAME_SIZE) {
             throw IOException("invalid image length: $imageLen")
@@ -155,7 +168,7 @@ object RemoteInferenceProtocol {
         return FrameMeta(
             frameId, offsetX, offsetY, regionW, regionH,
             captureW, captureH, rowStride, pixelStride,
-            jpegQuality, image
+            codec, flags, image
         )
     }
 

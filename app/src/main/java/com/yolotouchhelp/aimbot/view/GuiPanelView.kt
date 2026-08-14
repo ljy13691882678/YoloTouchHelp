@@ -87,6 +87,17 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var onKalmanMatchIouThresholdChanged: ((Float) -> Unit)? = null
     var onPanelDrag: ((Int, Int) -> Unit)? = null
     var onPanelResize: ((Int, Int) -> Unit)? = null
+    // ---- 远程推理 UI 桥 ----
+    var onRemoteInferenceEnabledChanged: ((Boolean) -> Unit)? = null
+    var onRemoteInferenceServerIpChanged: ((String) -> Unit)? = null
+    var onRemoteInferenceServerPortChanged: ((Int) -> Unit)? = null
+    var onRemoteInferenceTargetSizeChanged: ((Int) -> Unit)? = null
+    var onRemoteInferenceFrameRateChanged: ((Int) -> Unit)? = null
+    var onServerModeEnabledChanged: ((Boolean) -> Unit)? = null
+    var onServerModePortChanged: ((Int) -> Unit)? = null
+    var onServerModeModelIndexChanged: ((Int) -> Unit)? = null
+    var onServerModeAutoSwitchChanged: ((Boolean) -> Unit)? = null
+    var onServerActionRestart: (() -> Unit)? = null
 
     var aimbotEnabled = false
     var speed = 0.3f
@@ -150,6 +161,20 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
     var autoTriggerAdsEnabled = false
     var autoTriggerAdsRange = 180f
     var touchOrientationMode = 0
+    // ---- 远程推理 UI 字段 ----
+    var remoteInferenceEnabled = false
+    var remoteInferenceServerIp = ""
+    var remoteInferenceServerPort = 9876
+    var remoteInferenceTargetSize = 320
+    var remoteInferenceFrameRate = 120
+    var serverModeEnabled = false
+    var serverModePort = 9876
+    var serverModeModelIndex = 0
+    var serverModeAutoSwitch = true
+    var remoteServerStatus = ""   // 例如："listening on :9876"
+    var remoteClientStatus = ""   // 例如："connected" / "disconnected"
+    var remoteClientRtt = -1L
+    var remoteClientFps = 0
     var activeTab = 0
 
     private val webView: WebView
@@ -272,7 +297,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
         }
     }
 
-    private fun pushState() {
+    fun pushState() {
         if (!pageReady) return
         val script = "window.renderState(${buildStateJson().toString()});"
         webView.post { webView.evaluateJavascript(script, null) }
@@ -280,7 +305,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
 
     private fun buildStateJson(): JSONObject {
         return JSONObject().apply {
-            put("activeTab", activeTab.coerceIn(0, 3))
+            put("activeTab", activeTab.coerceIn(0, 4))
             put("modelRunning", modelRunning)
             put("aimbotEnabled", aimbotEnabled)
             put("speed", speed.toDouble())
@@ -336,6 +361,21 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
             put("priorityClass", priorityClass)
             put("hasMultipleClasses", classMap.size > 1)
             put("classEntries", buildClassEntries())
+            // ---- 远程推理 UI 状态 ----
+            put("remoteInferenceEnabled", remoteInferenceEnabled)
+            put("remoteInferenceServerIp", remoteInferenceServerIp)
+            put("remoteInferenceServerPort", remoteInferenceServerPort)
+            put("remoteInferenceTargetSize", remoteInferenceTargetSize)
+            put("remoteInferenceFrameRate", remoteInferenceFrameRate)
+            put("serverModeEnabled", serverModeEnabled)
+            put("serverModePort", serverModePort)
+            put("serverModeModelIndex", serverModeModelIndex.coerceIn(0, (modelNames.size - 1).coerceAtLeast(0)))
+            put("serverModeAutoSwitch", serverModeAutoSwitch)
+            put("remoteServerStatus", remoteServerStatus)
+            put("remoteClientStatus", remoteClientStatus)
+            put("remoteClientRtt", remoteClientRtt)
+            put("remoteClientFps", remoteClientFps)
+            put("lanIpv4Hint", com.yolotouchhelp.aimbot.remote.RemoteInferenceServer.lanIpv4())
         }
     }
 
@@ -403,7 +443,7 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
         @JavascriptInterface
         fun setTab(index: Int) {
             post {
-                activeTab = index.coerceIn(0, 3)
+                activeTab = index.coerceIn(0, 4)
             }
         }
 
@@ -413,6 +453,19 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                 when (action) {
                     "testCircle" -> onTestCircle?.invoke()
                     "openAreaSettings" -> onAreaSettingsToggle?.invoke()
+                    "restartRemoteServer" -> onServerActionRestart?.invoke()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun setString(key: String, value: String) {
+            post {
+                when (key) {
+                    "remoteInferenceServerIp" -> {
+                        remoteInferenceServerIp = value
+                        onRemoteInferenceServerIpChanged?.invoke(value)
+                    }
                 }
             }
         }
@@ -534,6 +587,20 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                         aimTouchDisplay = value
                         onAimTouchDisplay?.invoke(value)
                     }
+                    "remoteInferenceEnabled" -> {
+                        remoteInferenceEnabled = value
+                        onRemoteInferenceEnabledChanged?.invoke(value)
+                        pushState()
+                    }
+                    "serverModeEnabled" -> {
+                        serverModeEnabled = value
+                        onServerModeEnabledChanged?.invoke(value)
+                        pushState()
+                    }
+                    "serverModeAutoSwitch" -> {
+                        serverModeAutoSwitch = value
+                        onServerModeAutoSwitchChanged?.invoke(value)
+                    }
                 }
             }
         }
@@ -607,6 +674,26 @@ class GuiPanelView(context: Context) : MaterialCardView(ContextThemeWrapper(cont
                     "aimTouchSize" -> {
                         aimTouchSize = value
                         onAimTouchSize?.invoke(value)
+                    }
+                    "remoteInferenceServerPort" -> {
+                        remoteInferenceServerPort = value.coerceIn(1, 65535)
+                        onRemoteInferenceServerPortChanged?.invoke(remoteInferenceServerPort)
+                    }
+                    "remoteInferenceTargetSize" -> {
+                        remoteInferenceTargetSize = value.coerceIn(160, 640)
+                        onRemoteInferenceTargetSizeChanged?.invoke(remoteInferenceTargetSize)
+                    }
+                    "remoteInferenceFrameRate" -> {
+                        remoteInferenceFrameRate = value.coerceIn(30, 144)
+                        onRemoteInferenceFrameRateChanged?.invoke(remoteInferenceFrameRate)
+                    }
+                    "serverModePort" -> {
+                        serverModePort = value.coerceIn(1, 65535)
+                        onServerModePortChanged?.invoke(serverModePort)
+                    }
+                    "serverModeModelIndex" -> {
+                        serverModeModelIndex = value.coerceIn(0, (modelNames.size - 1).coerceAtLeast(0))
+                        onServerModeModelIndexChanged?.invoke(serverModeModelIndex)
                     }
                 }
             }
