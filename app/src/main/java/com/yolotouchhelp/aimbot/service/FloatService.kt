@@ -1073,8 +1073,18 @@ class FloatService : Service() {
         guiPanel.autoTriggerAdsRange = autoTriggerAdsRange
         guiPanel.touchOrientationMode = touchOrientationMode
         guiPanel.buildUI()
-        val initialWidth = ((280 * resources.displayMetrics.density).toInt()).coerceAtMost((screenWidth * 0.92f).toInt().coerceAtLeast(dp(240)))
-        val initialHeight = ((screenHeight * 0.68f).toInt()).coerceIn(dp(240).coerceAtMost((screenHeight * 0.88f).toInt().coerceAtLeast(dp(240))), (screenHeight * 0.88f).toInt().coerceAtLeast(dp(240)))
+        // 竖屏（手机）撑满宽度更易读；横屏（平板）保持紧凑布局。
+        val isPortrait = screenHeight > screenWidth
+        val initialWidth = if (isPortrait) {
+            (screenWidth * 0.92f).toInt().coerceAtLeast(dp(280))
+        } else {
+            ((280 * resources.displayMetrics.density).toInt()).coerceAtMost((screenWidth * 0.92f).toInt().coerceAtLeast(dp(240)))
+        }
+        val initialHeight = if (isPortrait) {
+            (screenHeight * 0.88f).toInt().coerceAtLeast(dp(360))
+        } else {
+            ((screenHeight * 0.68f).toInt()).coerceIn(dp(240).coerceAtMost((screenHeight * 0.88f).toInt().coerceAtLeast(dp(240))), (screenHeight * 0.88f).toInt().coerceAtLeast(dp(240)))
+        }
         guiParams = makeParams(initialWidth, initialHeight, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL).apply { gravity = Gravity.TOP or Gravity.START; x = 60; y = 200 }
         guiPanel.onPanelDrag = { dx, dy -> moveGuiPanel(dx, dy) }
         guiPanel.onPanelResize = { dx, dy -> resizeGuiPanel(dx, dy) }
