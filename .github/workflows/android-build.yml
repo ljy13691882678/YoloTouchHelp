@@ -51,12 +51,14 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: List APKs
+        run: ls -laR app/build/outputs/apk/
+
       - name: Upload Debug APKs
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: |
-            app/build/outputs/apk/hostDebug/*.apk
-            app/build/outputs/apk/inferDebug/*.apk
+            app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14
