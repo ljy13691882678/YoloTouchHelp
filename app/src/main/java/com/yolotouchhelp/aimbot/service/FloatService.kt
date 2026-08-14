@@ -843,7 +843,7 @@ class FloatService : Service() {
                         framesInWindow += (cur - lastFrameId).coerceAtLeast(0)
                         lastFrameId = cur
                     }
-                    val elapsed = now - lastFpsT
+                    val elapsed = (now - lastFpsT).toInt()
                     val fps: Int = if (elapsed >= 1000) {
                         val f = framesInWindow * 1000 / elapsed
                         framesInWindow = 0

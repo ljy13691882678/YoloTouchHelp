@@ -319,7 +319,7 @@ object RemoteInferenceClient {
                 src.limit(src.capacity())
             }
             bmpBuf.position(0)
-            bmp.copyPixelsFromBuffer(bmpBuf)
+            b.copyPixelsFromBuffer(bmpBuf)
         } else {
             // 像素间隔不为 4，保守处理：逐像素拷贝
             val intArr = IntArray(regionW * regionH)
@@ -334,7 +334,7 @@ object RemoteInferenceClient {
                     intArr[row * regionW + col] = (a shl 24) or (r shl 16) or (g shl 8) or bl
                 }
             }
-            bmp.setPixels(intArr, 0, regionW, 0, 0, regionW, regionH)
+            b.setPixels(intArr, 0, regionW, 0, 0, regionW, regionH)
         }
 
         // 2) 绘制到编码器输入 surface

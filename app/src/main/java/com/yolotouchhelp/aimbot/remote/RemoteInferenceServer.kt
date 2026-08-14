@@ -13,6 +13,8 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.nio.ByteBuffer
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
@@ -219,7 +221,8 @@ object RemoteInferenceServer {
                     sendError(outs, "decoder feed failed")
                     continue
                 }
-                val img = decoder.dequeueImage(timeoutUs = 50_000L) ?: run {
+                val img = decoder.dequeueImage(timeoutUs = 50_000L)
+                if (img == null) {
                     Log.w(TAG, "dequeueImage timeout")
                     continue
                 }
@@ -240,7 +243,9 @@ object RemoteInferenceServer {
                              else avgInferMs * 0.9 + inferMs * 0.1
 
                 // 构造 DETECTIONS
-                val list = if (det == null) emptyList() else ArrayList<RemoteInferenceProtocol.Detection>(det.size / 6)
+                val list: MutableList<RemoteInferenceProtocol.Detection> =
+                    if (det == null) mutableListOf()
+                    else ArrayList<RemoteInferenceProtocol.Detection>(det.size / 6)
                 if (det != null) {
                     val n = det.size / 6
                     for (i in 0 until n) {
